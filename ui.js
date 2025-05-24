@@ -1,111 +1,69 @@
 // UI module
-// Avoid circular imports for these values which will be passed at runtime
-// import { playerHealth } from './player.js';
-// import { weapons, currentWeapon } from './weapons.js';
 // Using the global game object for scene and camera instead of imports
-import { gameOver } from './player.js';
+import { gameOver } from './player.js'; // gameOver uses window.game internally
 
-// Exported UI state variables
-export let uiContainer;
-export let healthBarFill;
-export let healthText;
-export let ammoText;
-export let reloadText;
-export let waveText;
-export let waveStatusText;
-export let gameOverScreen;
-export let crosshair;
-export let enemyHealthBars = {};
-export let damageNumbers = [];
+// UI element references are now stored on window.game after setupUI is called.
+// No need to export them here.
+// window.game.enemyHealthBars and window.game.damageNumbers are initialized in main.js
+// and managed by effects.js
 
-// Function to damage an enemy (called from weapons.js)
-export function damageEnemy(enemy, amount, hitPoint) {
-    // Play hit sound
-    if (window.sounds && window.sounds.hit) {
-        window.sounds.hit.play();
-    }
-    
-    // Reduce enemy health
-    enemy.health -= amount;
-    
-    // Show damage number
-    showDamageNumber(amount, hitPoint);
-    
-    // Update enemy health bar
-    updateEnemyHealthBar(enemy);
-    
-    // Check for death
-    if (enemy.health <= 0) {
-        killEnemy(enemy);
-    }
-}
-
-// Function to kill an enemy
-export function killEnemy(enemy) {
-    // Remove from scene
-    scene.remove(enemy.mesh);
-    
-    // Remove health bar if it exists
-    if (enemyHealthBars[enemy.id]) {
-        document.getElementById('enemy-health-bar-container').removeChild(enemyHealthBars[enemy.id].container);
-        delete enemyHealthBars[enemy.id];
-    }
-    
-    // Remove from enemies array
-    const index = window.enemies.indexOf(enemy);
-    if (index !== -1) {
-        window.enemies.splice(index, 1);
-    }
-    
-    // Update enemies remaining
-    window.enemiesRemaining--;
-    
-    // Check if wave is cleared
-    if (window.enemiesRemaining <= 0) {
-        window.waveCleared();
-    }
-}
+// NOTE: The functions damageEnemy, killEnemy, updateEnemyHealthBar, showDamageNumber
+// have their primary implementations in enemies.js or effects.js.
+// The versions previously in ui.js were either stubs or less complete.
+// They are removed here to prevent duplication and ensure the centralized versions are used
+// via window.game.damageEnemy, window.game.killEnemy etc.
 
 // Exported UI-related functions
 export function setupUI() {
-    uiContainer = document.getElementById('ui-container');
-    healthBarFill = document.getElementById('health-bar-fill');
-    healthText = document.getElementById('health-text');
-    ammoText = document.getElementById('ammo-text');
-    reloadText = document.getElementById('reload-text');
-    waveText = document.getElementById('wave-text');
-    waveStatusText = document.getElementById('wave-status-text');
-    gameOverScreen = document.getElementById('game-over-screen');
-    crosshair = document.getElementById('crosshair');
+    const g = window.game;
+    g.uiContainer = document.getElementById('ui-container');
+    g.healthBarFill = document.getElementById('health-bar-fill');
+    g.healthText = document.getElementById('health-text');
+    g.ammoText = document.getElementById('ammo-text');
+    g.reloadText = document.getElementById('reload-text');
+    g.waveText = document.getElementById('wave-text');
+    g.waveStatusText = document.getElementById('wave-status-text');
+    g.gameOverScreen = document.getElementById('game-over-screen');
+    g.crosshair = document.getElementById('crosshair');
     
     // Initialize health bar
-    updateHealthBar();
+    updateHealthBar(); // Uses window.game
     
     // Initialize ammo text
-    updateAmmoText();
+    updateAmmoText(); // Uses window.game
 }
 export function updateHealthBar() {
-    healthBarFill.style.width = `${playerHealth}%`;
-    healthText.textContent = `${Math.ceil(playerHealth)} / 100`;
+    const g = window.game;
+    if (!g.healthBarFill || !g.healthText) return; // Ensure elements are loaded
+
+    g.healthBarFill.style.width = `${g.playerHealth}%`;
+    g.healthText.textContent = `${Math.ceil(g.playerHealth)} / 100`;
     
     // Change color based on health
-    if (playerHealth > 70) {
-        healthBarFill.style.backgroundColor = 'rgba(0, 200, 0, 0.9)';
-    } else if (playerHealth > 30) {
-        healthBarFill.style.backgroundColor = 'rgba(200, 200, 0, 0.9)';
+    if (g.playerHealth > 70) {
+        g.healthBarFill.style.backgroundColor = 'rgba(0, 200, 0, 0.9)';
+    } else if (g.playerHealth > 30) {
+        g.healthBarFill.style.backgroundColor = 'rgba(200, 200, 0, 0.9)';
     } else {
-        healthBarFill.style.backgroundColor = 'rgba(200, 0, 0, 0.9)';
+        g.healthBarFill.style.backgroundColor = 'rgba(200, 0, 0, 0.9)';
     }
 }
 export function updateAmmoText() {
-    const weapon = weapons[currentWeapon];
+    const g = window.game;
+    if (!g.ammoText || !g.weapons || typeof g.currentWeapon === 'undefined') return; // Ensure elements & game state ready
+
+    const weapon = g.weapons[g.currentWeapon];
+    if (!weapon) return;
+
     if (weapon.magazineSize === Infinity) {
-        ammoText.textContent = '∞';
+        g.ammoText.textContent = '∞';
     } else {
-        ammoText.textContent = `${weapon.currentAmmo} / ${weapon.magazineSize}`;
+        g.ammoText.textContent = `${weapon.currentAmmo} / ${weapon.magazineSize}`;
     }
 }
-export function updateEnemyHealthBar(enemy) { /* ... */ }
-export function showDamageNumber(amount, position) { /* ... */ }
 
-// ...Paste the full function bodies from sketch.js into the stubs above...
+// Stubs for updateEnemyHealthBar and showDamageNumber are removed.
+// Their definitive versions are in effects.js and should be called via window.game.
+
+// The comment "...Paste the full function bodies from sketch.js into the stubs above..."
+// is outdated. The core UI functions (setupUI, updateHealthBar, updateAmmoText) are complete.
