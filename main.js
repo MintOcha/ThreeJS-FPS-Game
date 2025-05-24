@@ -1,23 +1,7 @@
 // Entry point for Enhanced FPS Game
 import * as THREE from 'three';
-import { 
-    setupLighting, createWorld, onWindowResize 
-} from './world.js';
-import { 
-    createPlayer, setupControls, updatePlayer, updateHealthRegen
-} from './player.js';
-import {
-    setupUI, updateHealthBar, updateAmmoText
-} from './ui.js';
-import {
-    createWeaponModels, updateWeaponPosition, shoot
-} from './weapons.js';
-import {
-    startNextWave, updateEnemies
-} from './enemies.js';
-import {
-    updateBullets, updateExplosions, updateDamageNumbers
-} from './effects.js';
+// All module functions are now expected to be on window.game
+// and called via window.game.functionName() if needed by main.js directly.
 
 // Create a global game object to hold all game state
 window.game = {
@@ -179,28 +163,28 @@ function setup() {
     g.clock.start();
   
     // Setup UI
-    setupUI();
+    if(g.setupUI) g.setupUI();
     
     // Setup lighting
-    setupLighting();
+    if(g.setupLighting) g.setupLighting();
     
     // Create the world
-    createWorld();
+    if(g.createWorld) g.createWorld();
     
     // Create player
-    createPlayer();
+    if(g.createPlayer) g.createPlayer();
     
     // Setup controls
-    setupControls();
+    if(g.setupControls) g.setupControls();
     
     // Initialize raycaster for shooting
     g.raycaster = new THREE.Raycaster();
     
     // Create weapon models
-    createWeaponModels();
+    if(g.createWeaponModels) g.createWeaponModels();
     
     // Event listeners for window resize
-    window.addEventListener('resize', onWindowResize, false);
+    if(g.onWindowResize) window.addEventListener('resize', g.onWindowResize, false);
     
     // Show home screen
     document.getElementById('home-screen').style.display = 'flex';
@@ -222,23 +206,23 @@ function animate() {
     if (g.gameActive && !g.isPaused) {
         // Handle automatic shooting
         if (g.isShooting && g.weapons[g.currentWeapon].automatic) {
-            shoot();
+            if(g.shoot) g.shoot();
         }
         
         // Update player movement
-        updatePlayer();
+        if(g.updatePlayer) g.updatePlayer();
         
         // Update weapons position
-        updateWeaponPosition();
+        if(g.updateWeaponPosition) g.updateWeaponPosition();
         
         // Update bullets, explosions, and enemies
-        updateBullets();
-        updateExplosions();
-        updateEnemies();
-        updateDamageNumbers();
+        if(g.updateBullets) g.updateBullets();
+        if(g.updateExplosions) g.updateExplosions();
+        if(g.updateEnemies) g.updateEnemies(); 
+        if(g.updateDamageNumbers) g.updateDamageNumbers();
         
         // Update health regeneration
-        updateHealthRegen();
+        if(g.updateHealthRegen) g.updateHealthRegen();
         
         // Update damage flash effect
         if (g.damageFlashTime > 0) {

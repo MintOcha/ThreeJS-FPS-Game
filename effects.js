@@ -1,21 +1,19 @@
 // Effects module (bullets, explosions, damage numbers)
 import * as THREE from 'three';
-// Avoid circular imports, use window globals at runtime
-// import { weapons, currentWeapon, WEAPON_ROCKET } from './weapons.js';
 // Using the global game object for scene, camera and deltaTime instead of imports
-// import { damagePlayer } from './player.js';
-import { damageEnemy } from './ui.js';
+// Removed import for damagePlayer, will use window.game.damagePlayer
+// Removed import for damageEnemy, will use window.game.damageEnemy
 
-// Exported effects state variables
-export let bullets = [];
-export let explosions = [];
+// The 'bullets' and 'explosions' arrays are now managed on window.game.
+// This module's functions will modify window.game.bullets and window.game.explosions directly.
 
-// We'll expose these constants locally to avoid circular imports
-const WEAPON_ROCKET = 3; // Must match weapons.js
+// We'll expose these constants locally to avoid circular imports (though prefer window.game for safety)
+const LOCAL_WEAPON_ROCKET = 3; // Must match window.game.WEAPON_ROCKET
 
-// Exported effects-related functions
-export function createBulletTracer(direction) {
-    const weapon = weapons[currentWeapon];
+// Functions will be assigned to window.game
+window.game.createBulletTracer = function(direction) {
+    const g = window.game;
+    const weapon = g.weapons[g.currentWeapon];
     
     // Create bullet model if defined
     if (!weapon.bulletModel) return;
@@ -37,13 +35,13 @@ export function createBulletTracer(direction) {
         muzzlePosition.add(offsetVector);
     } else {
         // Fallback if no muzzle flash reference
-        muzzlePosition = new THREE.Vector3().copy(camera.position);
+        muzzlePosition = new THREE.Vector3().copy(g.camera.position);
         const forwardOffset = direction.clone().multiplyScalar(muzzleOffset);
         muzzlePosition.add(forwardOffset);
     }
     
     // For tracer effect, make the bullet longer in its movement direction
-    if (currentWeapon !== WEAPON_ROCKET) {
+    if (g.currentWeapon !== g.WEAPON_ROCKET) {
         // Scale bullet to be longer for tracer effect
         bullet.scale.z = 3;
     }
@@ -56,7 +54,7 @@ export function createBulletTracer(direction) {
     bullet.lookAt(targetPos);
     
     // Add bullet to scene
-    scene.add(bullet);
+    g.scene.add(bullet);
     
     // Store bullet data for animation
     const bulletData = {
@@ -64,13 +62,15 @@ export function createBulletTracer(direction) {
         velocity: direction.clone().multiplyScalar(weapon.bulletSpeed),
         created: Date.now(),
         // Lifetime depends on weapon type
-        lifetime: currentWeapon === WEAPON_ROCKET ? 3000 : 1000
+        lifetime: g.currentWeapon === g.WEAPON_ROCKET ? 3000 : 1000
     };
     
-    bullets.push(bulletData);
-}
-export function createRocket(position, direction) {
-    const weapon = weapons[WEAPON_ROCKET];
+    g.bullets.push(bulletData);
+};
+
+window.game.createRocket = function(position, direction) {
+    const g = window.game;
+    const weapon = g.weapons[g.WEAPON_ROCKET];
     
     // Create rocket mesh
     const rocket = weapon.bulletModel.clone();
@@ -83,7 +83,7 @@ export function createRocket(position, direction) {
     rocket.lookAt(rocketStart.clone().add(direction));
     
     // Add to scene
-    scene.add(rocket);
+    g.scene.add(rocket);
     
     // Store rocket data for animation
     const rocketData = {
@@ -94,9 +94,11 @@ export function createRocket(position, direction) {
         isRocket: true
     };
     
-    bullets.push(rocketData);
-}
-export function createExplosion(position, radius) {
+    g.bullets.push(rocketData);
+};
+
+window.game.createExplosion = function(position, radius) {
+    const g = window.game;
     // Create explosion sphere
     const explosionGeo = new THREE.SphereGeometry(radius, 16, 16);
     const explosionMat = new THREE.MeshBasicMaterial({
@@ -106,10 +108,10 @@ export function createExplosion(position, radius) {
     });
     const explosion = new THREE.Mesh(explosionGeo, explosionMat);
     explosion.position.copy(position);
-    scene.add(explosion);
+    g.scene.add(explosion);
     
     // Add to explosions array for animation
-    explosions.push({
+    g.explosions.push({
         mesh: explosion,
         created: Date.now(),
         lifetime: 500,
@@ -117,28 +119,30 @@ export function createExplosion(position, radius) {
     });
     
     // Check for enemies in blast radius
-    for (const enemy of enemies) {
+    for (const enemy of g.enemies) {
         const distance = enemy.mesh.position.distanceTo(position);
         if (distance <= radius * 1.5) {
             // Calculate damage based on distance (more damage closer to explosion)
-            const damage = Math.round(weapons[WEAPON_ROCKET].damage * (1 - distance / (radius * 1.5)));
+            const damage = Math.round(g.weapons[g.WEAPON_ROCKET].damage * (1 - distance / (radius * 1.5)));
             if (damage > 0) {
-                damageEnemy(enemy, damage, enemy.mesh.position);
+                if(g.damageEnemy) g.damageEnemy(enemy, damage, enemy.mesh.position);
             }
         }
     }
     
     // Check if player is in blast radius (self-damage)
-    const playerDistance = camera.position.distanceTo(position);
+    const playerDistance = g.camera.position.distanceTo(position);
     if (playerDistance <= radius * 1.2) {
         // Calculate damage based on distance
         const damage = Math.round(20 * (1 - playerDistance / (radius * 1.2)));
         if (damage > 0) {
-            damagePlayer(damage);
+            if(g.damagePlayer) g.damagePlayer(damage);
         }
     }
-}
-export function createBulletImpact(position, normal) {
+};
+
+window.game.createBulletImpact = function(position, normal) {
+    const g = window.game;
     // Create a simple impact mark (small disc facing the normal)
     const impactGeo = new THREE.CircleGeometry(0.05, 8);
     const impactMat = new THREE.MeshBasicMaterial({
@@ -157,33 +161,35 @@ export function createBulletImpact(position, normal) {
     impact.lookAt(position.clone().add(normal));
     
     // Add to scene
-    scene.add(impact);
+    g.scene.add(impact);
     
     // Remove after delay
     setTimeout(() => {
-        scene.remove(impact);
+        g.scene.remove(impact);
         impact.geometry.dispose();
         impact.material.dispose();
     }, 5000);
-}
-export function updateBullets(deltaTime) {
+};
+
+window.game.updateBullets = function() {
+    const g = window.game;
     // Loop through bullets array in reverse to safely remove items
-    for (let i = bullets.length - 1; i >= 0; i--) {
-        const bullet = bullets[i];
+    for (let i = g.bullets.length - 1; i >= 0; i--) {
+        const bullet = g.bullets[i];
         
         // Move bullet
-        bullet.bullet.position.add(bullet.velocity.clone().multiplyScalar(deltaTime));
+        bullet.bullet.position.add(bullet.velocity.clone().multiplyScalar(g.deltaTime));
         
         // Check for rocket collision with environment
         if (bullet.isRocket) {
-            raycaster.set(bullet.bullet.position, bullet.velocity.clone().normalize());
-            const intersects = raycaster.intersectObjects(scene.children, true);
+            g.raycaster.set(bullet.bullet.position, bullet.velocity.clone().normalize());
+            const intersects = g.raycaster.intersectObjects(g.scene.children, true);
             
             let hitFound = false;
             for (const hit of intersects) {
                 // Skip hits on bullets, weapons, etc.
-                if (bullets.some(b => b.bullet === hit.object) || 
-                    Object.values(weapons).some(w => w.model === hit.object || 
+                if (g.bullets.some(b => b.bullet === hit.object) || 
+                    Object.values(g.weapons).some(w => w.model === hit.object || 
                     (w.model && w.model.children.includes(hit.object)))) {
                     continue;
                 }
@@ -194,11 +200,11 @@ export function updateBullets(deltaTime) {
                 }
                 
                 // Explosion at hit point
-                createExplosion(hit.point, 5);
+                if(g.createExplosion) g.createExplosion(hit.point, 5);
                 
                 // Remove rocket
-                scene.remove(bullet.bullet);
-                bullets.splice(i, 1);
+                g.scene.remove(bullet.bullet);
+                g.bullets.splice(i, 1);
                 
                 hitFound = true;
                 break;
@@ -212,18 +218,20 @@ export function updateBullets(deltaTime) {
         if (age > bullet.lifetime) {
             // Handle rocket that expired without hitting anything
             if (bullet.isRocket) {
-                createExplosion(bullet.bullet.position, 5);
+                if(g.createExplosion) g.createExplosion(bullet.bullet.position, 5);
             }
             
             // Remove bullet
-            scene.remove(bullet.bullet);
-            bullets.splice(i, 1);
+            g.scene.remove(bullet.bullet);
+            g.bullets.splice(i, 1);
         }
     }
-}
-export function updateExplosions(deltaTime) {
-    for (let i = explosions.length - 1; i >= 0; i--) {
-        const explosion = explosions[i];
+};
+
+window.game.updateExplosions = function() {
+    const g = window.game;
+    for (let i = g.explosions.length - 1; i >= 0; i--) {
+        const explosion = g.explosions[i];
         
         // Scale explosion
         const age = Date.now() - explosion.created;
@@ -240,19 +248,21 @@ export function updateExplosions(deltaTime) {
         
         // Remove when lifetime is over
         if (progress >= 1) {
-            scene.remove(explosion.mesh);
-            explosions.splice(i, 1);
+            g.scene.remove(explosion.mesh);
+            g.explosions.splice(i, 1);
         }
     }
-}
-export function showDamageNumber(amount, position) {
+};
+
+window.game.showDamageNumber = function(amount, position) {
+    const g = window.game;
     // Create a div for the damage number
     const damageDiv = document.createElement('div');
     damageDiv.textContent = amount.toString();
     damageDiv.style.position = 'absolute';
-    damageDiv.style.color = amount >= 100 ? '#ff0000' : '#ffffff'; // Change this in the future to accomodate headshots
+    damageDiv.style.color = amount >= 100 ? '#ff0000' : '#ffffff'; // Change this in the future to accommodate headshots
     damageDiv.style.fontWeight = amount >= 50 ? 'bold' : 'normal';
-    damageDiv.style.fontSize = `${Math.min(16 + amount/5, 30)}px`;
+    damageDiv.style.fontSize = `${Math.min(16 + amount / 5, 30)}px`;
     damageDiv.style.textShadow = '1px 1px 2px black';
     damageDiv.style.userSelect = 'none';
     damageDiv.style.pointerEvents = 'none';
@@ -262,7 +272,7 @@ export function showDamageNumber(amount, position) {
     
     // Convert 3D position to screen coordinates
     const screenPosition = new THREE.Vector3().copy(position);
-    screenPosition.project(camera);
+    screenPosition.project(g.camera);
     
     const x = (screenPosition.x * 0.5 + 0.5) * window.innerWidth;
     const y = (-(screenPosition.y * 0.5) + 0.5) * window.innerHeight;
@@ -271,23 +281,25 @@ export function showDamageNumber(amount, position) {
     damageDiv.style.top = `${y}px`;
     
     // Animate and remove after delay
-    let opacity = 1;
-    let posY = y;
-    const floatSpeed = 50; // pixels per second
+    // let opacity = 1; // opacity is part of damageNumber object
+    // let posY = y; // position.y is part of damageNumber object
+    // const floatSpeed = 50; // pixels per second - not used directly here anymore
     const lastUpdate = Date.now();
     
     // Add to damage numbers array for animation
-    damageNumbers.push({
+    g.damageNumbers.push({
         element: damageDiv,
-        position: { x, y: posY },
-        opacity: opacity,
+        position: { x, y: y }, // Use the calculated y
+        opacity: 1,
         created: Date.now(),
         lastUpdate: lastUpdate
     });
-}
-export function updateDamageNumbers(deltaTime) {
-    for (let i = damageNumbers.length - 1; i >= 0; i--) {
-        const damageNumber = damageNumbers[i];
+};
+
+window.game.updateDamageNumbers = function() {
+    const g = window.game;
+    for (let i = g.damageNumbers.length - 1; i >= 0; i--) {
+        const damageNumber = g.damageNumbers[i];
         const now = Date.now();
         const age = now - damageNumber.created;
         const dt = (now - damageNumber.lastUpdate) / 1000; // seconds
@@ -307,34 +319,41 @@ export function updateDamageNumbers(deltaTime) {
         
         // Remove if fully faded
         if (damageNumber.opacity <= 0 || age > 1000) {
-            damageNumber.element.parentNode.removeChild(damageNumber.element);
-            damageNumbers.splice(i, 1);
+            if (damageNumber.element.parentNode) { // Check if still in DOM
+                damageNumber.element.parentNode.removeChild(damageNumber.element);
+            }
+            g.damageNumbers.splice(i, 1);
         }
     }
-}
-export function updateEnemyHealthBar(enemy) {
+};
+
+window.game.updateEnemyHealthBar = function(enemy) {
+    const g = window.game;
     // Create health bar if it doesn't exist
-    if (!enemyHealthBars[enemy.id]) {
+    if (!g.enemyHealthBars[enemy.id]) {
         const barContainer = document.createElement('div');
         barContainer.style.position = 'absolute';
-        barContainer.style.width = '50px';
-        barContainer.style.height = '5px';
-        barContainer.style.backgroundColor = 'rgba(0,0,0,0.5)';
-        barContainer.style.border = '1px solid rgba(255,255,255,0.3)';
-        barContainer.style.pointerEvents = 'none';
+        barContainer.style.width = '50px'; // Standardized width
+        barContainer.style.height = '5px'; // Standardized height
+        barContainer.style.backgroundColor = 'rgba(0,0,0,0.5)'; // Standardized background
+        barContainer.style.border = '1px solid rgba(255,255,255,0.3)'; // Standardized border
+        barContainer.style.pointerEvents = 'none'; // Standardized pointer events
         
         const barFill = document.createElement('div');
         barFill.style.position = 'absolute';
         barFill.style.top = '0';
         barFill.style.left = '0';
         barFill.style.height = '100%';
-        barFill.style.backgroundColor = 'rgba(255,50,50,0.8)';
-        barFill.style.width = '100%';
+        barFill.style.backgroundColor = 'rgba(255,50,50,0.8)'; // Standardized fill color
+        barFill.style.width = '100%'; // Start full
         
         barContainer.appendChild(barFill);
-        document.getElementById('enemy-health-bar-container').appendChild(barContainer);
+        const containerElement = document.getElementById('enemy-health-bar-container');
+        if (containerElement) { // Ensure container exists
+            containerElement.appendChild(barContainer);
+        }
         
-        enemyHealthBars[enemy.id] = {
+        g.enemyHealthBars[enemy.id] = {
             container: barContainer,
             fill: barFill
         };
@@ -342,10 +361,10 @@ export function updateEnemyHealthBar(enemy) {
     
     // Update health bar fill
     const healthPercent = enemy.health / enemy.maxHealth * 100;
-    enemyHealthBars[enemy.id].fill.style.width = `${healthPercent}%`;
+    g.enemyHealthBars[enemy.id].fill.style.width = `${healthPercent}%`;
     
     // Show health bar
-    enemyHealthBars[enemy.id].container.style.visibility = 'visible';
+    g.enemyHealthBars[enemy.id].container.style.visibility = 'visible';
     
     // Hide after delay
     if (enemy.healthBarTimeout) {
@@ -353,8 +372,8 @@ export function updateEnemyHealthBar(enemy) {
     }
     
     enemy.healthBarTimeout = setTimeout(() => {
-        if (enemyHealthBars[enemy.id]) {
-            enemyHealthBars[enemy.id].container.style.visibility = 'hidden';
+        if (g.enemyHealthBars[enemy.id]) { // Check if it still exists
+            g.enemyHealthBars[enemy.id].container.style.visibility = 'hidden';
         }
     }, 2000);
-}
+};
