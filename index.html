@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced FPS Game</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; color: white; }
+        canvas { display: block; }
+
+        /* --- Home Screen --- */
+        #home-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            color: white;
+            display: flex; /* Use flexbox */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 200; /* Above everything else initially */
+            font-family: 'Arial', sans-serif;
+        }
+        #home-screen h1 {
+            font-size: 4em;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 5px #555;
+        }
+         #home-screen p {
+             max-width: 600px;
+             line-height: 1.6;
+             font-size: 1.1em;
+             margin-bottom: 30px;
+         }
+        #play-button {
+            padding: 15px 40px;
+            font-size: 1.5em;
+            color: white;
+            background-color: #4CAF50; /* Green */
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        #play-button:hover {
+            background-color: #45a049;
+        }
+        #play-button:active {
+             background-color: #367c39;
+             box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+
+        /* --- In-Game UI --- */
+        #ui-container {
+            position: fixed; bottom: 20px; left: 20px; color: white;
+            font-family: Arial, sans-serif; font-size: 20px;
+            text-shadow: 1px 1px 2px black; z-index: 100;
+            display: none; /* Initially hidden */
+        }
+        #health-bar-container {
+            width: 200px; height: 20px; background-color: rgba(100, 0, 0, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 3px;
+            margin-bottom: 10px; overflow: hidden; position: relative; /* For text positioning */
+        }
+        #health-bar-fill {
+            width: 100%; height: 100%; background-color: rgba(0, 200, 0, 0.9);
+            transition: width 0.2s linear;
+        }
+         #health-text {
+             position: absolute; top: 0; left: 5px; line-height: 20px;
+             font-size: 14px; pointer-events: none;
+         }
+        #ammo-text { font-size: 24px; margin-bottom: 5px; }
+        #reload-text { font-size: 16px; color: yellow; display: none; }
+
+        #wave-text {
+            position: fixed; top: 20px; right: 20px; font-size: 24px; color: white;
+            text-shadow: 1px 1px 2px black; z-index: 100; display: none; /* Initially hidden */
+        }
+        #wave-status-text {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 48px; color: white; text-shadow: 2px 2px 4px black;
+            text-align: center; display: none; z-index: 110;
+        }
+        #game-over-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.8); color: red; font-size: 72px;
+            display: none; flex-direction: column; justify-content: center;
+            align-items: center; text-align: center; z-index: 200;
+        }
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
+            background-color: rgba(255, 255, 255, 0.7); border: 1px solid rgba(0, 0, 0, 0.5);
+            border-radius: 50%; transform: translate(-50%, -50%); display: none;
+            pointer-events: none; z-index: 10;
+        }
+        #enemy-health-bar-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 1;
+        }
+        #damage-number-container {
+             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+             pointer-events: none; overflow: hidden; z-index: 50;
+        }
+         /* Style for individual damage numbers managed by JS */
+
+    </style>
+</head>
+<body>
+    <!-- Home Screen -->
+    <div id="home-screen">
+        <h1>Block Ops</h1>
+        <p>
+            [WASD] Move | [SHIFT] Run | [C] Slide | [SPACE] Jump<br>
+            [Mouse] Look | [Left Click] Shoot / Hold for Rifle<br>
+            [Right Click] ADS | [R] Reload<br>
+            [1] Rifle | [2] Shotgun | [3] Rocket | [4] Melee<br>
+            [ESC] Pause / Unpause
+        </p>
+        <button id="play-button">Start Game</button>
+    </div>
+
+    <!-- In-Game UI Elements -->
+    <div id="ui-container">
+        <div id="health-bar-container">
+            <div id="health-bar-fill"></div>
+            <div id="health-text">100 / 100</div>
+        </div>
+        <div id="ammo-text">30 / 30</div>
+        <div id="reload-text">Reloading...</div>
+    </div>
+    <div id="wave-text">Wave: 0</div>
+    <div id="wave-status-text">Wave Cleared!</div>
+    <div id="game-over-screen">
+        GAME OVER<br><span style="font-size: 36px;">Refresh to play again</span>
+    </div>
+    <div id="crosshair"></div>
+    <div id="enemy-health-bar-container"></div>
+    <div id="damage-number-container"></div>
+  
+    <!-- Load Howler.js for sound -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.4/howler.min.js"></script>
+
+    <!-- Import three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <!-- Load our game module -->
+    <script type="module" src="main.js"></script>
+
+</body>
+</html>
