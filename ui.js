@@ -1,6 +1,6 @@
 // UI module
 // Using the global game object for scene and camera instead of imports
-import { gameOver } from 'player'; // gameOver uses window.game internally
+// Removed import for gameOver, will use window.game.gameOver if needed (though not called in this file)
 
 // UI element references are now stored on window.game after setupUI is called.
 // No need to export them here.
@@ -13,8 +13,8 @@ import { gameOver } from 'player'; // gameOver uses window.game internally
 // They are removed here to prevent duplication and ensure the centralized versions are used
 // via window.game.damageEnemy, window.game.killEnemy etc.
 
-// Exported UI-related functions
-export function setupUI() {
+// UI functions assigned to window.game
+window.game.setupUI = function() {
     const g = window.game;
     g.uiContainer = document.getElementById('ui-container');
     g.healthBarFill = document.getElementById('health-bar-fill');
@@ -27,12 +27,13 @@ export function setupUI() {
     g.crosshair = document.getElementById('crosshair');
     
     // Initialize health bar
-    updateHealthBar(); // Uses window.game
+    if(g.updateHealthBar) g.updateHealthBar();
     
     // Initialize ammo text
-    updateAmmoText(); // Uses window.game
-}
-export function updateHealthBar() {
+    if(g.updateAmmoText) g.updateAmmoText();
+};
+
+window.game.updateHealthBar = function() {
     const g = window.game;
     if (!g.healthBarFill || !g.healthText) return; // Ensure elements are loaded
 
@@ -47,8 +48,9 @@ export function updateHealthBar() {
     } else {
         g.healthBarFill.style.backgroundColor = 'rgba(200, 0, 0, 0.9)';
     }
-}
-export function updateAmmoText() {
+};
+
+window.game.updateAmmoText = function() {
     const g = window.game;
     if (!g.ammoText || !g.weapons || typeof g.currentWeapon === 'undefined') return; // Ensure elements & game state ready
 

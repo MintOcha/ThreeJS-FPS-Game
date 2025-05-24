@@ -8,7 +8,7 @@ import * as THREE from 'three';
 // The renderer is added to the document in main.js
 
 // Setup lighting in the scene
-export function setupLighting() {
+window.game.setupLighting = function() {
     const g = window.game;
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -44,8 +44,9 @@ export function setupLighting() {
 
     // --- Set solid colour bg if it doesn't work ---
     g.scene.background = new THREE.Color(0x87CEEB); // Sky blue color
-}
-export function createWorld() {
+};
+
+window.game.createWorld = function() {
     const g = window.game;
     
     // Floor
@@ -60,10 +61,10 @@ export function createWorld() {
     const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x0088ff });
     
     // Outer walls
-    createWall(-50, 2.5, 0, 1, 5, 100, wallMaterial); // Left
-    createWall(50, 2.5, 0, 1, 5, 100, wallMaterial);  // Right
-    createWall(0, 2.5, -50, 100, 5, 1, wallMaterial); // Back
-    createWall(0, 2.5, 50, 100, 5, 1, wallMaterial);  // Front
+    if(g.createWall) g.createWall(-50, 2.5, 0, 1, 5, 100, wallMaterial); // Left
+    if(g.createWall) g.createWall(50, 2.5, 0, 1, 5, 100, wallMaterial);  // Right
+    if(g.createWall) g.createWall(0, 2.5, -50, 100, 5, 1, wallMaterial); // Back
+    if(g.createWall) g.createWall(0, 2.5, 50, 100, 5, 1, wallMaterial);  // Front
     
     // Inner structures - Random boxes and platforms
     for (let i = 0; i < 15; i++) {
@@ -71,17 +72,17 @@ export function createWorld() {
         const height = 1 + Math.random() * 4;
         const x = (Math.random() - 0.5) * 80;
         const z = (Math.random() - 0.5) * 80;
-        createWall(x, height/2, z, size, height, size, wallMaterial);
+        if(g.createWall) g.createWall(x, height/2, z, size, height, size, wallMaterial);
     }
     
     // Add some platforms
-    createWall(-20, 3, -20, 10, 0.5, 10, wallMaterial);
-    createWall(20, 5, 20, 15, 0.5, 15, wallMaterial);
-    createWall(0, 7, 0, 8, 0.5, 8, wallMaterial);
-}
+    if(g.createWall) g.createWall(-20, 3, -20, 10, 0.5, 10, wallMaterial);
+    if(g.createWall) g.createWall(20, 5, 20, 15, 0.5, 15, wallMaterial);
+    if(g.createWall) g.createWall(0, 7, 0, 8, 0.5, 8, wallMaterial);
+};
 
 // Helper function to create walls
-export function createWall(x, y, z, width, height, depth, material) {
+window.game.createWall = function(x, y, z, width, height, depth, material) {
     const g = window.game;
     const geometry = new THREE.BoxGeometry(width, height, depth);
     const wall = new THREE.Mesh(geometry, material);
@@ -90,10 +91,11 @@ export function createWall(x, y, z, width, height, depth, material) {
     wall.receiveShadow = true;
     g.scene.add(wall);
     return wall;
-}
-export function onWindowResize() {
+};
+
+window.game.onWindowResize = function() {
     const g = window.game;
     g.camera.aspect = window.innerWidth / window.innerHeight;
     g.camera.updateProjectionMatrix();
     g.renderer.setSize(window.innerWidth, window.innerHeight);
-}
+};

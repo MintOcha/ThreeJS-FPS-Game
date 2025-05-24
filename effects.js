@@ -1,8 +1,8 @@
 // Effects module (bullets, explosions, damage numbers)
 import * as THREE from 'three';
 // Using the global game object for scene, camera and deltaTime instead of imports
-import { damagePlayer } from 'player'; // For createExplosion
-import { damageEnemy } from 'enemies'; // For createExplosion
+// Removed import for damagePlayer, will use window.game.damagePlayer
+// Removed import for damageEnemy, will use window.game.damageEnemy
 
 // The 'bullets' and 'explosions' arrays are now managed on window.game.
 // This module's functions will modify window.game.bullets and window.game.explosions directly.
@@ -10,8 +10,8 @@ import { damageEnemy } from 'enemies'; // For createExplosion
 // We'll expose these constants locally to avoid circular imports (though prefer window.game for safety)
 const LOCAL_WEAPON_ROCKET = 3; // Must match window.game.WEAPON_ROCKET
 
-// Exported effects-related functions
-export function createBulletTracer(direction) {
+// Functions will be assigned to window.game
+window.game.createBulletTracer = function(direction) {
     const g = window.game;
     const weapon = g.weapons[g.currentWeapon];
     
@@ -66,8 +66,9 @@ export function createBulletTracer(direction) {
     };
     
     g.bullets.push(bulletData);
-}
-export function createRocket(position, direction) {
+};
+
+window.game.createRocket = function(position, direction) {
     const g = window.game;
     const weapon = g.weapons[g.WEAPON_ROCKET];
     
@@ -94,8 +95,9 @@ export function createRocket(position, direction) {
     };
     
     g.bullets.push(rocketData);
-}
-export function createExplosion(position, radius) {
+};
+
+window.game.createExplosion = function(position, radius) {
     const g = window.game;
     // Create explosion sphere
     const explosionGeo = new THREE.SphereGeometry(radius, 16, 16);
@@ -123,7 +125,7 @@ export function createExplosion(position, radius) {
             // Calculate damage based on distance (more damage closer to explosion)
             const damage = Math.round(g.weapons[g.WEAPON_ROCKET].damage * (1 - distance / (radius * 1.5)));
             if (damage > 0) {
-                damageEnemy(enemy, damage, enemy.mesh.position); // Direct call
+                if(g.damageEnemy) g.damageEnemy(enemy, damage, enemy.mesh.position);
             }
         }
     }
@@ -134,11 +136,12 @@ export function createExplosion(position, radius) {
         // Calculate damage based on distance
         const damage = Math.round(20 * (1 - playerDistance / (radius * 1.2)));
         if (damage > 0) {
-            damagePlayer(damage); // Direct call
+            if(g.damagePlayer) g.damagePlayer(damage);
         }
     }
-}
-export function createBulletImpact(position, normal) {
+};
+
+window.game.createBulletImpact = function(position, normal) {
     const g = window.game;
     // Create a simple impact mark (small disc facing the normal)
     const impactGeo = new THREE.CircleGeometry(0.05, 8);
@@ -166,8 +169,9 @@ export function createBulletImpact(position, normal) {
         impact.geometry.dispose();
         impact.material.dispose();
     }, 5000);
-}
-export function updateBullets() {
+};
+
+window.game.updateBullets = function() {
     const g = window.game;
     // Loop through bullets array in reverse to safely remove items
     for (let i = g.bullets.length - 1; i >= 0; i--) {
@@ -196,7 +200,7 @@ export function updateBullets() {
                 }
                 
                 // Explosion at hit point
-                createExplosion(hit.point, 5); // createExplosion uses window.game internally
+                if(g.createExplosion) g.createExplosion(hit.point, 5);
                 
                 // Remove rocket
                 g.scene.remove(bullet.bullet);
@@ -214,7 +218,7 @@ export function updateBullets() {
         if (age > bullet.lifetime) {
             // Handle rocket that expired without hitting anything
             if (bullet.isRocket) {
-                createExplosion(bullet.bullet.position, 5); // createExplosion uses window.game internally
+                if(g.createExplosion) g.createExplosion(bullet.bullet.position, 5);
             }
             
             // Remove bullet
@@ -222,8 +226,9 @@ export function updateBullets() {
             g.bullets.splice(i, 1);
         }
     }
-}
-export function updateExplosions() {
+};
+
+window.game.updateExplosions = function() {
     const g = window.game;
     for (let i = g.explosions.length - 1; i >= 0; i--) {
         const explosion = g.explosions[i];
@@ -247,8 +252,9 @@ export function updateExplosions() {
             g.explosions.splice(i, 1);
         }
     }
-}
-export function showDamageNumber(amount, position) {
+};
+
+window.game.showDamageNumber = function(amount, position) {
     const g = window.game;
     // Create a div for the damage number
     const damageDiv = document.createElement('div');
@@ -288,8 +294,9 @@ export function showDamageNumber(amount, position) {
         created: Date.now(),
         lastUpdate: lastUpdate
     });
-}
-export function updateDamageNumbers() {
+};
+
+window.game.updateDamageNumbers = function() {
     const g = window.game;
     for (let i = g.damageNumbers.length - 1; i >= 0; i--) {
         const damageNumber = g.damageNumbers[i];
@@ -318,8 +325,9 @@ export function updateDamageNumbers() {
             g.damageNumbers.splice(i, 1);
         }
     }
-}
-export function updateEnemyHealthBar(enemy) {
+};
+
+window.game.updateEnemyHealthBar = function(enemy) {
     const g = window.game;
     // Create health bar if it doesn't exist
     if (!g.enemyHealthBars[enemy.id]) {
@@ -368,4 +376,4 @@ export function updateEnemyHealthBar(enemy) {
             g.enemyHealthBars[enemy.id].container.style.visibility = 'hidden';
         }
     }, 2000);
-}
+};
