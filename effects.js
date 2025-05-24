@@ -1,8 +1,8 @@
 // Effects module (bullets, explosions, damage numbers)
 import * as THREE from 'three';
 // Using the global game object for scene, camera and deltaTime instead of imports
-import { damagePlayer } from './player.js'; // For createExplosion
-import { damageEnemy } from './enemies.js'; // For createExplosion
+import { damagePlayer } from 'player'; // For createExplosion
+import { damageEnemy } from 'enemies'; // For createExplosion
 
 // The 'bullets' and 'explosions' arrays are now managed on window.game.
 // This module's functions will modify window.game.bullets and window.game.explosions directly.

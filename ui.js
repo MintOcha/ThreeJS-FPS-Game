@@ -1,6 +1,6 @@
 // UI module
 // Using the global game object for scene and camera instead of imports
-import { gameOver } from './player.js'; // gameOver uses window.game internally
+import { gameOver } from 'player'; // gameOver uses window.game internally
 
 // UI element references are now stored on window.game after setupUI is called.
 // No need to export them here.

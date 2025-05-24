@@ -2,22 +2,22 @@
 import * as THREE from 'three';
 import { 
     setupLighting, createWorld, onWindowResize 
-} from './world.js';
+} from 'world';
 import { 
     createPlayer, setupControls, updatePlayer, updateHealthRegen
-} from './player.js';
+} from 'player';
 import {
     setupUI, updateHealthBar, updateAmmoText
-} from './ui.js';
+} from 'ui';
 import {
     createWeaponModels, updateWeaponPosition, shoot
-} from './weapons.js';
+} from 'weapons';
 import {
     startNextWave, updateEnemies
-} from './enemies.js';
+} from 'enemies';
 import {
     updateBullets, updateExplosions, updateDamageNumbers
-} from './effects.js';
+} from 'effects';
 
 // Create a global game object to hold all game state
 window.game = {
