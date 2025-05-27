@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Game Start</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; color: white; font-family: Arial, sans-serif; }
+        #debug-info { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 10px; z-index: 1000; }
+        #start-btn { padding: 15px 30px; font-size: 18px; margin: 10px; cursor: pointer; }
+        #console-log { background: #111; color: #0f0; font-family: monospace; padding: 10px; max-height: 200px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <div id="debug-info">
+        <h3>Game Debug</h3>
+        <button id="start-btn" onclick="testStart()">START GAME</button>
+        <div>Status: <span id="status">Loading...</span></div>
+        <div>Game Object: <span id="game-status">Checking...</span></div>
+        <div id="console-log"></div>
+    </div>
+
+    <div id="home-screen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; z-index: 100;">
+        <div style="text-align: center;">
+            <h1>Block Ops</h1>
+            <button id="play-button" style="padding: 15px 40px; font-size: 1.5em; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Start Game</button>
+        </div>
+    </div>
+
+    <div id="ui-container" style="position: fixed; bottom: 20px; left: 20px; color: white; display: none;">
+        <div id="health-bar-container" style="width: 200px; height: 20px; background: rgba(100,0,0,0.7); border: 1px solid white; margin-bottom: 10px;">
+            <div id="health-bar-fill" style="width: 100%; height: 100%; background: rgba(0,200,0,0.9);"></div>
+            <div id="health-text" style="position: absolute; margin-top: -20px; margin-left: 5px;">100 / 100</div>
+        </div>
+        <div id="ammo-text">30 / 30</div>
+        <div id="reload-text" style="color: yellow; display: none;">Reloading...</div>
+    </div>
+
+    <div id="wave-text" style="position: fixed; top: 20px; right: 20px; font-size: 24px; color: white; display: none;">Wave: 0</div>
+    <div id="crosshair" style="position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; background: white; border-radius: 50%; transform: translate(-50%, -50%); display: none;"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.4/howler.min.js"></script>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // Console capture
+        const consoleDiv = document.getElementById('console-log');
+        const originalLog = console.log;
+        const originalError = console.error;
+        
+        function addLog(type, ...args) {
+            const div = document.createElement('div');
+            div.style.color = type === 'error' ? '#f66' : '#6f6';
+            div.textContent = `${type}: ${args.join(' ')}`;
+            consoleDiv.appendChild(div);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+
+        console.log = (...args) => { originalLog(...args); addLog('LOG', ...args); };
+        console.error = (...args) => { originalError(...args); addLog('ERR', ...args); };
+
+        // Initialize minimal game object
+        window.game = {
+            scene: new THREE.Scene(),
+            camera: new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000),
+            renderer: new THREE.WebGLRenderer({ antialias: true }),
+            gameActive: false,
+            isPaused: false,
+            playerHealth: 100,
+            startGame: function() {
+                console.log('startGame called');
+                const homeScreen = document.getElementById('home-screen');
+                const ui = document.getElementById('ui-container');
+                const wave = document.getElementById('wave-text');
+                const crosshair = document.getElementById('crosshair');
+                
+                if (homeScreen) {
+                    homeScreen.style.display = 'none';
+                    console.log('Home screen hidden');
+                } else {
+                    console.error('Home screen not found');
+                }
+                
+                if (ui) {
+                    ui.style.display = 'block';
+                    console.log('UI shown');
+                } else {
+                    console.error('UI not found');
+                }
+                
+                if (wave) {
+                    wave.style.display = 'block';
+                    console.log('Wave text shown');
+                } else {
+                    console.error('Wave text not found');
+                }
+                
+                if (crosshair) {
+                    crosshair.style.display = 'block';
+                    console.log('Crosshair shown');
+                } else {
+                    console.error('Crosshair not found');
+                }
+                
+                this.gameActive = true;
+                console.log('Game is now active');
+                document.getElementById('status').textContent = 'Game Started!';
+            }
+        };
+
+        // Setup renderer
+        window.game.renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(window.game.renderer.domElement);
+
+        // Test function
+        window.testStart = function() {
+            console.log('Test start button clicked');
+            if (window.game && typeof window.game.startGame === 'function') {
+                window.game.startGame();
+            } else {
+                console.error('startGame function not available');
+            }
+        };
+
+        // Setup play button
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded');
+            const playButton = document.getElementById('play-button');
+            if (playButton) {
+                playButton.addEventListener('click', function() {
+                    console.log('Play button clicked');
+                    window.game.startGame();
+                });
+                console.log('Play button listener added');
+            } else {
+                console.error('Play button not found');
+            }
+        });
+
+        // Status updates
+        document.getElementById('status').textContent = 'Ready';
+        document.getElementById('game-status').textContent = window.game ? 'Found' : 'Missing';
+        
+        console.log('Debug page initialized');
+    </script>
+</body>
+</html>
