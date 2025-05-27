@@ -36,25 +36,65 @@ window.game.waveCleared = function() {
 
 window.game.spawnEnemy = function() {
     const g = window.game;
-    // Skip if game is not active
-    if (!g.gameActive) return;
+    if (!g.gameActive || !g.levelGrid || !g.gridConfig || !g.camera) return;
+
+    const { width: gridWidth, height: gridHeight, tileSize } = g.gridConfig;
+    const playerGridPos = worldToGrid(g.camera.position.x, g.camera.position.z);
+    if (!playerGridPos) return; // Could not get player grid position
+
+    let spawnGridCol, spawnGridRow;
+    let attempts = 0;
+    const maxSpawnAttempts = 50; // Prevent infinite loop if no valid spot is found
+    const minSpawnDistFromPlayer = 5; // Minimum grid units away from player
+
+    do {
+        spawnGridCol = Math.floor(Math.random() * gridWidth);
+        spawnGridRow = Math.floor(Math.random() * gridHeight);
+        attempts++;
+        if (attempts > maxSpawnAttempts) {
+            console.warn("Max spawn attempts reached. Spawning enemy at random valid location or failing.");
+            // Fallback: find any empty cell if distant spawn fails
+            let foundFallback = false;
+            for (let r = 0; r < gridHeight; r++) {
+                for (let c = 0; c < gridWidth; c++) {
+                    if (g.levelGrid[r][c] === 0) {
+                        spawnGridCol = c;
+                        spawnGridRow = r;
+                        foundFallback = true;
+                        break;
+                    }
+                }
+                if (foundFallback) break;
+            }
+            if (!foundFallback) {
+                 console.error("Could not find any empty cell to spawn enemy.");
+                 return; // No valid spot found at all
+            }
+            break; // Exit do-while loop
+        }
+        
+        const distToPlayer = Math.sqrt(
+            Math.pow(spawnGridCol - playerGridPos.col, 2) + 
+            Math.pow(spawnGridRow - playerGridPos.row, 2)
+        );
+
+        if (g.levelGrid[spawnGridRow][spawnGridCol] === 0 && distToPlayer >= minSpawnDistFromPlayer) {
+            break; // Found a valid spot
+        }
+    } while (true);
     
+    const spawnWorldPos = gridToWorld(spawnGridCol, spawnGridRow);
+    if (!spawnWorldPos) {
+        console.error("Failed to convert spawn grid position to world position.");
+        return;
+    }
+
     // Create enemy mesh
-    const enemyGeo = new THREE.BoxGeometry(1, 2, 1);
+    const enemyGeo = new THREE.BoxGeometry(1, 2, 1); // Standard enemy size
     const enemyMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
     const enemyMesh = new THREE.Mesh(enemyGeo, enemyMat);
-    
-    // Random spawn position away from player (minimum distance of 15)
-    let spawnPos = new THREE.Vector3();
-    do {
-        spawnPos.set(
-            (Math.random() - 0.5) * 80,
-            1,
-            (Math.random() - 0.5) * 80
-        );
-    } while (g.camera && spawnPos.distanceTo(g.camera.position) < 15); // Check g.camera exists
-    
-    enemyMesh.position.copy(spawnPos);
+
+    enemyMesh.position.set(spawnWorldPos.x, 1, spawnWorldPos.z); // Enemy Y position is 1 (half height of 2)
     enemyMesh.castShadow = true;
     enemyMesh.receiveShadow = true;
     
@@ -82,67 +122,152 @@ window.game.spawnEnemy = function() {
     g.enemies.push(enemy);
 };
 
+// Helper functions for coordinate conversion
+function worldToGrid(worldX, worldZ) {
+    const g = window.game;
+    if (!g.gridConfig) return null; // Grid config not yet available
+
+    const { width, height, tileSize } = g.gridConfig;
+    // Convert world coordinates (centered around 0,0) to grid coordinates (top-left 0,0)
+    const gridCol = Math.floor((worldX / tileSize) + width / 2);
+    const gridRow = Math.floor((worldZ / tileSize) + height / 2);
+    
+    // Clamp to grid boundaries
+    const clampedCol = Math.max(0, Math.min(width - 1, gridCol));
+    const clampedRow = Math.max(0, Math.min(height - 1, gridRow));
+
+    return { col: clampedCol, row: clampedRow };
+}
+
+function gridToWorld(gridCol, gridRow) {
+    const g = window.game;
+    if (!g.gridConfig) return null;
+
+    const { width, height, tileSize } = g.gridConfig;
+    // Convert grid coordinates (top-left 0,0) to world coordinates (center of tile)
+    const worldX = (gridCol - width / 2 + 0.5) * tileSize;
+    const worldZ = (gridRow - height / 2 + 0.5) * tileSize;
+    
+    return { x: worldX, z: worldZ };
+}
+
+
 window.game.updateEnemies = function() {
     const g = window.game;
-    const playerCollisionRadius = 0.5;
-    const enemyRadius = 0.5;
+    const playerCollisionRadius = 0.5; // For enemy pushing player
+    const enemyRadius = 0.5;           // For enemy pushing player
+
+    if (!g.camera || !g.levelGrid || !g.gridConfig) return; // Ensure necessary components are loaded
 
     for (const enemy of g.enemies) {
+        // Initialize pathfinding properties if they don't exist
+        if (enemy.pathRecalculationTimer === undefined) {
+            enemy.pathRecalculationTimer = 0;
+            enemy.path = [];
+            enemy.lastPlayerGridPos = null; // Store player's last grid pos for recalculation trigger
+        }
+
+        enemy.pathRecalculationTimer -= g.deltaTime;
+
         // Update attack cooldown
         if (enemy.attackCooldown > 0) {
             enemy.attackCooldown -= g.deltaTime;
         }
+
+        const playerWorldPos = g.camera.position;
+        const enemyWorldPos = enemy.mesh.position;
+
+        const playerGridPos = worldToGrid(playerWorldPos.x, playerWorldPos.z);
+        const enemyGridPos = worldToGrid(enemyWorldPos.x, enemyWorldPos.z);
+
+        if (!playerGridPos || !enemyGridPos) continue; // Conversion failed
+
+        // Path recalculation logic
+        let playerMovedSignificantly = false;
+        if (enemy.lastPlayerGridPos) {
+            if (enemy.lastPlayerGridPos.col !== playerGridPos.col || enemy.lastPlayerGridPos.row !== playerGridPos.row) {
+                playerMovedSignificantly = true;
+            }
+        } else {
+            playerMovedSignificantly = true; // First time, calculate path
+        }
         
-        // Move towards player
-        if (!g.camera) return; // Ensure camera is initialized
-        const direction = new THREE.Vector3().subVectors(g.camera.position, enemy.mesh.position);
-        direction.y = 0; // Keep enemy on ground
+        if (enemy.pathRecalculationTimer <= 0 || playerMovedSignificantly || enemy.path.length === 0) {
+            if (g.findPath) {
+                enemy.path = g.findPath(enemyGridPos.col, enemyGridPos.row, playerGridPos.col, playerGridPos.row, g.levelGrid);
+                enemy.pathRecalculationTimer = 1.0; // Recalculate path every 1 second or if player moves
+                enemy.lastPlayerGridPos = playerGridPos;
+            }
+        }
+
+        let targetWorldPos = null;
+        if (enemy.path && enemy.path.length > 0) {
+            const nextWaypointGrid = enemy.path[0]; // Path is [col, row]
+            targetWorldPos = gridToWorld(nextWaypointGrid[0], nextWaypointGrid[1]);
+
+            if (targetWorldPos) {
+                const distanceToWaypointXZ = Math.sqrt(
+                    Math.pow(targetWorldPos.x - enemyWorldPos.x, 2) +
+                    Math.pow(targetWorldPos.z - enemyWorldPos.z, 2)
+                );
+
+                if (distanceToWaypointXZ < enemy.speed * 2 * g.deltaTime + 0.1) { // If close enough to waypoint
+                    enemy.path.shift(); // Remove current waypoint
+                    if (enemy.path.length > 0) { // If there's a next waypoint
+                        const newNextWaypointGrid = enemy.path[0];
+                        targetWorldPos = gridToWorld(newNextWaypointGrid[0], newNextWaypointGrid[1]);
+                    } else {
+                        targetWorldPos = null; // Reached end of path
+                    }
+                }
+            }
+        }
+        
+        let direction = new THREE.Vector3();
+        if (targetWorldPos) {
+            // Move towards path waypoint
+            direction.subVectors(new THREE.Vector3(targetWorldPos.x, enemyWorldPos.y, targetWorldPos.z), enemyWorldPos);
+        } else {
+            // Fallback: if no path or path ended, move towards player directly (original behavior for short distances)
+            // This can be refined, e.g., only if player is very close and visible
+            direction.subVectors(playerWorldPos, enemyWorldPos);
+        }
+        direction.y = 0;
         direction.normalize();
-        
-        // Set velocity based on direction and speed
+
         enemy.velocity.x = direction.x * enemy.speed;
         enemy.velocity.z = direction.z * enemy.speed;
 
-        // Calculate potential next position
+        // Collision with player (pushing logic - simplified from previous)
         const potentialPosition = new THREE.Vector3(
-            enemy.mesh.position.x + enemy.velocity.x,
-            enemy.mesh.position.y, // Y is not changing for movement
-            enemy.mesh.position.z + enemy.velocity.z
+            enemyWorldPos.x + enemy.velocity.x,
+            enemyWorldPos.y,
+            enemyWorldPos.z + enemy.velocity.z
         );
-
-        // Calculate distance from potential position to player on XZ plane
-        const dxPotential = potentialPosition.x - g.camera.position.x;
-        const dzPotential = potentialPosition.z - g.camera.position.z;
+        const dxPotential = potentialPosition.x - playerWorldPos.x;
+        const dzPotential = potentialPosition.z - playerWorldPos.z;
         const distanceToPlayerNextXZ = Math.sqrt(dxPotential * dxPotential + dzPotential * dzPotential);
-
         const collisionThreshold = playerCollisionRadius + enemyRadius;
 
         if (distanceToPlayerNextXZ < collisionThreshold) {
-            // Collision detected, position enemy at the edge of the collision threshold
-            const clampedX = g.camera.position.x + direction.x * collisionThreshold;
-            const clampedZ = g.camera.position.z + direction.z * collisionThreshold;
+            const clampedX = playerWorldPos.x + direction.x * collisionThreshold; // Push along current movement dir
+            const clampedZ = playerWorldPos.z + direction.z * collisionThreshold;
             enemy.mesh.position.set(clampedX, enemy.mesh.position.y, clampedZ);
-            // Optionally, you might want to stop their velocity if they are at the boundary
-            // enemy.velocity.x = 0;
-            // enemy.velocity.z = 0;
         } else {
-            // No collision, apply velocity
             enemy.mesh.position.x += enemy.velocity.x;
             enemy.mesh.position.z += enemy.velocity.z;
         }
         
-        // Make enemy face player
-        enemy.mesh.lookAt(new THREE.Vector3(g.camera.position.x, enemy.mesh.position.y, g.camera.position.z));
+        // Make enemy face player (or movement direction if preferred)
+        enemy.mesh.lookAt(new THREE.Vector3(playerWorldPos.x, enemy.mesh.position.y, playerWorldPos.z));
         
-        // Check for attack range (using actual distance after movement)
-        // Note: distanceToPlayer should be calculated on XZ plane for consistency with movement collision
-        const dxActual = enemy.mesh.position.x - g.camera.position.x;
-        const dzActual = enemy.mesh.position.z - g.camera.position.z;
+        // Check for attack range (based on direct distance to player)
+        const dxActual = enemyWorldPos.x - playerWorldPos.x;
+        const dzActual = enemyWorldPos.z - playerWorldPos.z;
         const distanceToPlayerXZ = Math.sqrt(dxActual * dxActual + dzActual * dzActual);
 
-        if (distanceToPlayerXZ < 1.5 && enemy.attackCooldown <= 0) {
-            // Attack player
-            if(window.game.damagePlayer) window.game.damagePlayer(10); 
+        if (distanceToPlayerXZ < 1.5 && enemy.attackCooldown <= 0) { // Attack range
+            if(window.game.damagePlayer) window.game.damagePlayer(10);
             
             // Set attack cooldown
             enemy.attackCooldown = 1.0; // 1 second between attacks

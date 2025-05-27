@@ -426,27 +426,59 @@ window.game.jump = function() {
     g.jumpForce = 0.15;
 };
 
-window.game.checkPlayerCollision = function(pos) { // pos is a parameter
+// Helper function for player collision - needs to be defined before checkPlayerCollision if not global
+// Or, ensure it's attached to window.game if it needs to be globally accessible.
+// For now, defining it locally as it's specific to player.js logic.
+function playerWorldToGrid(worldX, worldZ) {
     const g = window.game;
-    const radius = 0.4; // horizontal collision radius
-    // const playerHeight = 1.7; // eye height above ground - Replaced by dynamic calculation
-    for (const obj of g.scene.children) { // Use g.scene
-        if (obj.geometry && obj.geometry.type === 'BoxGeometry') {
-            const box = new THREE.Box3().setFromObject(obj);
-            // Only check collision if vertical ranges overlap
-            // const playerMinY = pos.y - playerHeight; // pos is parameter - Replaced
-            // const playerMaxY = pos.y; // pos is parameter - Replaced
-            const playerCollisionBottomY = 0; // Player's feet are at ground level
-            const playerCollisionTopY = pos.y;    // Player's top for collision is their eye level
-            if (box.min.y > playerCollisionTopY || box.max.y < playerCollisionBottomY) continue;
-            // Check overlap in XZ plane only
-            if (pos.x + radius > box.min.x && pos.x - radius < box.max.x &&
-                pos.z + radius > box.min.z && pos.z - radius < box.max.z) {
-                return true;
-            }
-        }
+    if (!g.gridConfig || !g.levelGrid) { // Also check levelGrid for safety
+        console.warn("Grid config or levelGrid not available for player collision.");
+        return null;
     }
-    return false;
+
+    const { width, height, tileSize } = g.gridConfig;
+    const gridCol = Math.floor((worldX / tileSize) + width / 2);
+    const gridRow = Math.floor((worldZ / tileSize) + height / 2);
+
+    // Important: We don't clamp here for collision detection.
+    // If the player is trying to move outside the grid, it's a collision (or out of bounds).
+    // The grid check itself will handle out-of-bounds if gridCol/Row are invalid indices.
+    return { col: gridCol, row: gridRow };
+}
+
+
+window.game.checkPlayerCollision = function(pos) { // pos is the potential next THREE.Vector3 position of the player's camera
+    const g = window.game;
+
+    if (!g.levelGrid || !g.gridConfig) {
+        console.warn("levelGrid or gridConfig not found for player collision check.");
+        return true; // Fail safe: assume collision if grid isn't ready
+    }
+
+    const { width: gridWidth, height: gridHeight } = g.gridConfig;
+
+    // Convert the player's potential next 3D position (pos.x, pos.z) to grid coordinates
+    // The 'pos.y' is the player's eye level, not directly used for grid cell checking here.
+    const playerGridCoords = playerWorldToGrid(pos.x, pos.z);
+
+    if (!playerGridCoords) {
+        return true; // Failed to convert, assume collision
+    }
+
+    const { col: targetGridCol, row: targetGridRow } = playerGridCoords;
+
+    // Boundary check: Is the target grid cell outside the defined grid?
+    if (targetGridCol < 0 || targetGridCol >= gridWidth || targetGridRow < 0 || targetGridRow >= gridHeight) {
+        return true; // Collision with the edge of the world/grid
+    }
+
+    // Check the grid cell type
+    // g.levelGrid is [row][col]
+    if (g.levelGrid[targetGridRow][targetGridCol] === 1) { // 1 represents a wall
+        return true; // Collision with a wall
+    }
+
+    return false; // No collision, it's a path cell (0) or other walkable type
 };
 
 window.game.updatePlayer = function() { 
