@@ -84,6 +84,9 @@ window.game.spawnEnemy = function() {
 
 window.game.updateEnemies = function() {
     const g = window.game;
+    const playerCollisionRadius = 0.5;
+    const enemyRadius = 0.5;
+
     for (const enemy of g.enemies) {
         // Update attack cooldown
         if (enemy.attackCooldown > 0) {
@@ -99,17 +102,45 @@ window.game.updateEnemies = function() {
         // Set velocity based on direction and speed
         enemy.velocity.x = direction.x * enemy.speed;
         enemy.velocity.z = direction.z * enemy.speed;
-        
-        // Apply velocity
-        enemy.mesh.position.x += enemy.velocity.x;
-        enemy.mesh.position.z += enemy.velocity.z;
+
+        // Calculate potential next position
+        const potentialPosition = new THREE.Vector3(
+            enemy.mesh.position.x + enemy.velocity.x,
+            enemy.mesh.position.y, // Y is not changing for movement
+            enemy.mesh.position.z + enemy.velocity.z
+        );
+
+        // Calculate distance from potential position to player on XZ plane
+        const dxPotential = potentialPosition.x - g.camera.position.x;
+        const dzPotential = potentialPosition.z - g.camera.position.z;
+        const distanceToPlayerNextXZ = Math.sqrt(dxPotential * dxPotential + dzPotential * dzPotential);
+
+        const collisionThreshold = playerCollisionRadius + enemyRadius;
+
+        if (distanceToPlayerNextXZ < collisionThreshold) {
+            // Collision detected, position enemy at the edge of the collision threshold
+            const clampedX = g.camera.position.x + direction.x * collisionThreshold;
+            const clampedZ = g.camera.position.z + direction.z * collisionThreshold;
+            enemy.mesh.position.set(clampedX, enemy.mesh.position.y, clampedZ);
+            // Optionally, you might want to stop their velocity if they are at the boundary
+            // enemy.velocity.x = 0;
+            // enemy.velocity.z = 0;
+        } else {
+            // No collision, apply velocity
+            enemy.mesh.position.x += enemy.velocity.x;
+            enemy.mesh.position.z += enemy.velocity.z;
+        }
         
         // Make enemy face player
         enemy.mesh.lookAt(new THREE.Vector3(g.camera.position.x, enemy.mesh.position.y, g.camera.position.z));
         
-        // Check for attack range
-        const distanceToPlayer = enemy.mesh.position.distanceTo(g.camera.position);
-        if (distanceToPlayer < 1.5 && enemy.attackCooldown <= 0) {
+        // Check for attack range (using actual distance after movement)
+        // Note: distanceToPlayer should be calculated on XZ plane for consistency with movement collision
+        const dxActual = enemy.mesh.position.x - g.camera.position.x;
+        const dzActual = enemy.mesh.position.z - g.camera.position.z;
+        const distanceToPlayerXZ = Math.sqrt(dxActual * dxActual + dzActual * dzActual);
+
+        if (distanceToPlayerXZ < 1.5 && enemy.attackCooldown <= 0) {
             // Attack player
             if(window.game.damagePlayer) window.game.damagePlayer(10); 
             

@@ -296,11 +296,11 @@ window.game.updateWeaponPosition = function() {
     
     // Update crosshair size based on ADS
     if (g.crosshair) { 
-        const baseSize = 20;
-        const adsSize = 10; 
-        const size = baseSize * (1 - g.adsTransition) + adsSize * g.adsTransition;
-        g.crosshair.style.width = `${size}px`;
-        g.crosshair.style.height = `${size}px`;
+        // const baseSize = 20;
+        // const adsSize = 10; 
+        // const size = baseSize * (1 - g.adsTransition) + adsSize * g.adsTransition;
+        // g.crosshair.style.width = `${size}px`;
+        // g.crosshair.style.height = `${size}px`;
     }
 }
 

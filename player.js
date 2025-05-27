@@ -112,6 +112,14 @@ const onMouseDown = function(event) { // Changed to non-exported function
     
     switch (event.button) {
         case 0: // Left mouse button
+            if (g.isReloading) {
+                clearTimeout(g.reloadTimeoutId);
+                g.isReloading = false;
+                g.reloadTimeoutId = null; // Or undefined
+                if (g.reloadText) g.reloadText.style.display = 'none';
+                return; // Important: only cancel reload, don't shoot
+            }
+            // If not reloading, proceed with shooting
             if (g.weapons[g.currentWeapon] && g.weapons[g.currentWeapon].automatic) {
                 g.isShooting = true;
             } else {
@@ -421,14 +429,16 @@ window.game.jump = function() {
 window.game.checkPlayerCollision = function(pos) { // pos is a parameter
     const g = window.game;
     const radius = 0.4; // horizontal collision radius
-    const playerHeight = 1.7; // eye height above ground
+    // const playerHeight = 1.7; // eye height above ground - Replaced by dynamic calculation
     for (const obj of g.scene.children) { // Use g.scene
         if (obj.geometry && obj.geometry.type === 'BoxGeometry') {
             const box = new THREE.Box3().setFromObject(obj);
             // Only check collision if vertical ranges overlap
-            const playerMinY = pos.y - playerHeight; // pos is parameter
-            const playerMaxY = pos.y; // pos is parameter
-            if (box.min.y > playerMaxY || box.max.y < playerMinY) continue;
+            // const playerMinY = pos.y - playerHeight; // pos is parameter - Replaced
+            // const playerMaxY = pos.y; // pos is parameter - Replaced
+            const playerCollisionBottomY = 0; // Player's feet are at ground level
+            const playerCollisionTopY = pos.y;    // Player's top for collision is their eye level
+            if (box.min.y > playerCollisionTopY || box.max.y < playerCollisionBottomY) continue;
             // Check overlap in XZ plane only
             if (pos.x + radius > box.min.x && pos.x - radius < box.max.x &&
                 pos.z + radius > box.min.z && pos.z - radius < box.max.z) {
