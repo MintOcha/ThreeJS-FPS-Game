@@ -1,5 +1,6 @@
 // World/scene module
 import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d';
 
 // We're using the global game object for all game state
 // so we don't need to export scene, camera, etc.
@@ -56,6 +57,13 @@ window.game.createWorld = function() {
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     g.scene.add(floor);
+
+    // Add Rapier collider for the floor
+    const floorColliderDesc = RAPIER.ColliderDesc.cuboid(50, 0.1, 50)
+        .setTranslation(0, -0.1, 0) // Position it just below y=0
+        .setRestitution(0.1)
+        .setFriction(1.0);
+    g.rapierWorld.createCollider(floorColliderDesc);
     
     // Walls and obstacles using boxes
     const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x0088ff });
@@ -90,6 +98,15 @@ window.game.createWall = function(x, y, z, width, height, depth, material) {
     wall.castShadow = true;
     wall.receiveShadow = true;
     g.scene.add(wall);
+
+    // Add Rapier collider for the wall
+    const wallColliderDesc = RAPIER.ColliderDesc.cuboid(width / 2, height / 2, depth / 2)
+        .setTranslation(x, y, z)
+        .setRestitution(0.1)
+        .setFriction(1.0);
+    const wallBody = g.rapierWorld.createRigidBody(RAPIER.RigidBodyDesc.fixed()); // Fixed body
+    g.rapierWorld.createCollider(wallColliderDesc, wallBody);
+
     return wall;
 };
 

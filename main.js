@@ -1,5 +1,7 @@
 // Entry point for Enhanced FPS Game
 import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d';
+
 // All module functions are now expected to be on window.game
 // and called via window.game.functionName() if needed by main.js directly.
 
@@ -11,6 +13,10 @@ window.game = {
     renderer: new THREE.WebGLRenderer({ antialias: true }),
     clock: new THREE.Clock(),
     deltaTime: 0,
+
+    // Rapier Physics
+    rapierWorld: null,
+    rapierEventQueue: null,
     
     // Player
     player: null,
@@ -161,6 +167,11 @@ function setup() {
     
     // Start the clock
     g.clock.start();
+
+    // Initialize Rapier
+    const gravity = { x: 0.0, y: -9.81, z: 0.0 };
+    g.rapierWorld = new RAPIER.World(gravity);
+    g.rapierEventQueue = new RAPIER.EventQueue(true);
   
     // Setup UI
     if(g.setupUI) g.setupUI();
@@ -202,6 +213,56 @@ function animate() {
     // Update deltaTime
     g.deltaTime = g.clock.getDelta();
     
+    // Step the Rapier world
+    if (g.rapierWorld) {
+        g.rapierWorld.step(g.rapierEventQueue);
+    }
+
+    // Process collision events
+    if (g.rapierEventQueue && g.rapierWorld) {
+        g.rapierEventQueue.drainCollisionEvents((handle1, handle2, started) => {
+            if (!started) return; // Only handle new contacts
+
+            const col1 = g.rapierWorld.getCollider(handle1);
+            const col2 = g.rapierWorld.getCollider(handle2);
+
+            const userData1 = col1 ? col1.userData : null;
+            const userData2 = col2 ? col2.userData : null;
+
+            // Bullet/Rocket collision handling
+            if (userData1 && (userData1.type === 'bullet' || userData1.type === 'rocket') && userData2) {
+                if (g.handleBulletCollision && userData1.bulletObject) {
+                    // Don't collide with player that shot it immediately (if needed, add shooter ID to bullet)
+                    if (userData2.type !== 'player' || (userData2.type === 'player' /* && userData1.shooterId !== g.playerId */)) {
+                        g.handleBulletCollision(userData1.bulletObject, col2);
+                    }
+                }
+            } else if (userData2 && (userData2.type === 'bullet' || userData2.type === 'rocket') && userData1) {
+                if (g.handleBulletCollision && userData2.bulletObject) {
+                     if (userData1.type !== 'player' || (userData1.type === 'player' /* && userData2.shooterId !== g.playerId */)) {
+                        g.handleBulletCollision(userData2.bulletObject, col1);
+                    }
+                }
+            }
+            // Player-Enemy collision
+            else if (userData1 && userData1.type === 'player' && userData2 && userData2.type === 'enemy') {
+                if (g.damagePlayer && userData2.enemyObject && userData2.enemyObject.attackCooldown <= 0) {
+                    // Access enemy object from userData to check its attack cooldown
+                    const enemy = userData2.enemyObject;
+                    g.damagePlayer(10); // Apply 10 damage
+                    enemy.attackCooldown = 1.0; // Reset enemy attack cooldown
+                }
+            } else if (userData2 && userData2.type === 'player' && userData1 && userData1.type === 'enemy') {
+                if (g.damagePlayer && userData1.enemyObject && userData1.enemyObject.attackCooldown <= 0) {
+                    // Access enemy object from userData
+                    const enemy = userData1.enemyObject;
+                    g.damagePlayer(10); // Apply 10 damage
+                    enemy.attackCooldown = 1.0; // Reset enemy attack cooldown
+                }
+            }
+        });
+    }
+
     // Skip game logic when paused or game over
     if (g.gameActive && !g.isPaused) {
         // Handle automatic shooting
@@ -216,6 +277,8 @@ function animate() {
         if(g.updateWeaponPosition) g.updateWeaponPosition();
         
         // Update bullets, explosions, and enemies
+        // Note: updateBullets and updateEnemies will need significant changes
+        // to synchronize with Rapier bodies instead of direct position manipulation.
         if(g.updateBullets) g.updateBullets();
         if(g.updateExplosions) g.updateExplosions();
         if(g.updateEnemies) g.updateEnemies(); 

@@ -1,5 +1,6 @@
 // Effects module (bullets, explosions, damage numbers)
 import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d';
 // Using the global game object for scene, camera and deltaTime instead of imports
 // Removed import for damagePlayer, will use window.game.damagePlayer
 // Removed import for damageEnemy, will use window.game.damageEnemy
@@ -58,19 +59,34 @@ window.game.createBulletTracer = function(direction) {
     
     // Store bullet data for animation
     const bulletData = {
-        bullet: bullet,
-        velocity: direction.clone().multiplyScalar(weapon.bulletSpeed),
+        bulletMesh: bullet, // Renamed from 'bullet' to 'bulletMesh'
+        // Velocity will be handled by Rapier
         created: Date.now(),
-        // Lifetime depends on weapon type
-        lifetime: g.currentWeapon === g.WEAPON_ROCKET ? 3000 : 1000
+        lifetime: g.currentWeapon === g.WEAPON_ROCKET ? 3000 : 1000, // Rockets handled separately
+        isRocket: false,
+        weaponId: g.currentWeapon // Store weapon type for damage calculation etc.
     };
+
+    // Create Rapier rigid body for the bullet tracer
+    const bulletRadius = 0.025; // Small radius for tracer
+    const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(muzzlePosition.x, muzzlePosition.y, muzzlePosition.z)
+        .setLinvel(direction.x * weapon.bulletSpeed, direction.y * weapon.bulletSpeed, direction.z * weapon.bulletSpeed)
+        .setCcdEnabled(true); // Enable CCD for fast-moving objects
+    bulletData.rigidBody = g.rapierWorld.createRigidBody(rigidBodyDesc);
+
+    const colliderDesc = RAPIER.ColliderDesc.ball(bulletRadius)
+        .setSensor(true) // Tracers are sensors, they detect but don't physically push
+        .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+    bulletData.collider = g.rapierWorld.createCollider(colliderDesc, bulletData.rigidBody);
+    bulletData.collider.setUserData({ type: 'bullet', id: `bullet-${Date.now()}-${Math.random()}`, bulletObject: bulletData });
     
     g.bullets.push(bulletData);
 };
 
 window.game.createRocket = function(position, direction) {
     const g = window.game;
-    const weapon = g.weapons[g.WEAPON_ROCKET];
+    const weapon = g.weapons[g.WEAPON_ROCKET]; // Ensure g.WEAPON_ROCKET is correct
     
     // Create rocket mesh
     const rocket = weapon.bulletModel.clone();
@@ -87,12 +103,29 @@ window.game.createRocket = function(position, direction) {
     
     // Store rocket data for animation
     const rocketData = {
-        bullet: rocket,
-        velocity: direction.clone().multiplyScalar(weapon.bulletSpeed),
+        bulletMesh: rocket, // Renamed
+        // Velocity handled by Rapier
         created: Date.now(),
         lifetime: 3000,
-        isRocket: true
+        isRocket: true,
+        weaponId: g.WEAPON_ROCKET
     };
+
+    // Create Rapier rigid body for the rocket
+    const rocketRadius = 0.1; // Larger than tracer
+    const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(rocketStart.x, rocketStart.y, rocketStart.z)
+        .setLinvel(direction.x * weapon.bulletSpeed, direction.y * weapon.bulletSpeed, direction.z * weapon.bulletSpeed)
+        .setCcdEnabled(true);
+    rocketData.rigidBody = g.rapierWorld.createRigidBody(rigidBodyDesc);
+
+    // Rockets are not sensors, they should physically interact if desired, or be sensors that trigger explosions.
+    // For this implementation, making them sensors that trigger explosions on contact.
+    const colliderDesc = RAPIER.ColliderDesc.ball(rocketRadius)
+        .setSensor(true)
+        .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+    rocketData.collider = g.rapierWorld.createCollider(colliderDesc, rocketData.rigidBody);
+    rocketData.collider.setUserData({ type: 'rocket', id: `rocket-${Date.now()}-${Math.random()}`, bulletObject: rocketData });
     
     g.bullets.push(rocketData);
 };
@@ -175,58 +208,79 @@ window.game.updateBullets = function() {
     const g = window.game;
     // Loop through bullets array in reverse to safely remove items
     for (let i = g.bullets.length - 1; i >= 0; i--) {
-        const bullet = g.bullets[i];
+        const bulletData = g.bullets[i];
         
-        // Move bullet
-        bullet.bullet.position.add(bullet.velocity.clone().multiplyScalar(g.deltaTime));
-        
-        // Check for rocket collision with environment
-        if (bullet.isRocket) {
-            g.raycaster.set(bullet.bullet.position, bullet.velocity.clone().normalize());
-            const intersects = g.raycaster.intersectObjects(g.scene.children, true);
-            
-            let hitFound = false;
-            for (const hit of intersects) {
-                // Skip hits on bullets, weapons, etc.
-                if (g.bullets.some(b => b.bullet === hit.object) || 
-                    Object.values(g.weapons).some(w => w.model === hit.object || 
-                    (w.model && w.model.children.includes(hit.object)))) {
-                    continue;
-                }
-                
-                // Skip hit on self (rocket)
-                if (hit.object === bullet.bullet) {
-                    continue;
-                }
-                
-                // Explosion at hit point
-                if(g.createExplosion) g.createExplosion(hit.point, 5);
-                
-                // Remove rocket
-                g.scene.remove(bullet.bullet);
-                g.bullets.splice(i, 1);
-                
-                hitFound = true;
-                break;
-            }
-            
-            if (hitFound) continue;
+        // Synchronize Three.js mesh with Rapier rigid body
+        if (bulletData.rigidBody && bulletData.bulletMesh) {
+            const physPos = bulletData.rigidBody.translation();
+            bulletData.bulletMesh.position.set(physPos.x, physPos.y, physPos.z);
+            // Optional: Synchronize rotation if bullets aren't always aligned with velocity
+            // const physRot = bulletData.rigidBody.rotation();
+            // bulletData.bulletMesh.quaternion.set(physRot.x, physRot.y, physRot.z, physRot.w);
         }
         
-        // Check lifetime
-        const age = Date.now() - bullet.created;
-        if (age > bullet.lifetime) {
-            // Handle rocket that expired without hitting anything
-            if (bullet.isRocket) {
-                if(g.createExplosion) g.createExplosion(bullet.bullet.position, 5);
+        // Check lifetime (Rapier doesn't handle this directly for bullets)
+        const age = Date.now() - bulletData.created;
+        if (age > bulletData.lifetime) {
+            if (bulletData.isRocket) {
+                // Create explosion if rocket expires
+                const pos = bulletData.rigidBody ? bulletData.rigidBody.translation() : bulletData.bulletMesh.position;
+                if(g.createExplosion) g.createExplosion(new THREE.Vector3(pos.x, pos.y, pos.z), 5);
             }
             
-            // Remove bullet
-            g.scene.remove(bullet.bullet);
+            // Remove bullet (mesh and Rapier body)
+            if (bulletData.bulletMesh) g.scene.remove(bulletData.bulletMesh);
+            if (bulletData.rigidBody) g.rapierWorld.removeRigidBody(bulletData.rigidBody);
             g.bullets.splice(i, 1);
         }
+        // Collision detection and removal on hit will be handled by the main game loop's
+        // drainCollisionEvents callback. This function now primarily handles visual sync and lifetime.
     }
 };
+
+// This function will be called from the main game loop's collision handler
+window.game.handleBulletCollision = function(bulletData, otherCollider) {
+    const g = window.game;
+    const otherUserData = otherCollider ? g.rapierWorld.getCollider(otherCollider).userData : null;
+
+    if (bulletData.isRocket) {
+        const pos = bulletData.rigidBody ? bulletData.rigidBody.translation() : bulletData.bulletMesh.position;
+        if(g.createExplosion) g.createExplosion(new THREE.Vector3(pos.x, pos.y, pos.z), 5);
+    } else {
+        // Regular bullet hit
+        if (otherUserData && otherUserData.type === 'enemy') {
+            const enemy = otherUserData.enemyObject; // Assuming enemyObject is stored in userData
+            if (enemy) {
+                const weaponStats = g.weapons[bulletData.weaponId];
+                const hitPoint = bulletData.rigidBody ? bulletData.rigidBody.translation() : bulletData.bulletMesh.position;
+                // Simplified damage calculation for now, can be expanded with range/pierce later
+                if(g.damageEnemy) g.damageEnemy(enemy, weaponStats.damage, new THREE.Vector3(hitPoint.x, hitPoint.y, hitPoint.z));
+            }
+        } else if (otherUserData && otherUserData.type !== 'player' && otherUserData.type !== 'bullet' && otherUserData.type !== 'rocket') {
+            // Hit a wall or other static object
+            const hitPos = bulletData.rigidBody ? bulletData.rigidBody.translation() : bulletData.bulletMesh.position;
+            // For impact normal, we'd need raycasting from bullet's previous to current pos,
+            // or get contact normal from Rapier event if available and detailed enough.
+            // For simplicity, using a default normal for now or skipping if normal isn't easily available.
+            // const contact = g.rapierWorld.contactPair(bulletData.collider.handle, otherCollider.handle);
+            // if(contact && contact.manifolds.length > 0) {
+            //    const normal = contact.manifolds[0].normal();
+            //    if(g.createBulletImpact) g.createBulletImpact(new THREE.Vector3(hitPos.x, hitPos.y, hitPos.z), new THREE.Vector3(normal.x, normal.y, normal.z));
+            // } else {
+               if(g.createBulletImpact) g.createBulletImpact(new THREE.Vector3(hitPos.x, hitPos.y, hitPos.z), new THREE.Vector3(0,1,0)); // Placeholder normal
+            // }
+        }
+    }
+
+    // Remove bullet after collision
+    const index = g.bullets.indexOf(bulletData);
+    if (index > -1) {
+        if (bulletData.bulletMesh) g.scene.remove(bulletData.bulletMesh);
+        if (bulletData.rigidBody) g.rapierWorld.removeRigidBody(bulletData.rigidBody);
+        g.bullets.splice(index, 1);
+    }
+};
+
 
 window.game.updateExplosions = function() {
     const g = window.game;

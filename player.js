@@ -1,5 +1,6 @@
 // Player module for movement, controls, health, and player state
 import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d';
 // Imports for updateHealthBar, updateAmmoText, getQuaternionRoll are removed,
 // as these functions are now expected to be on window.game.
 
@@ -10,9 +11,24 @@ window.game.createPlayer = function() {
     const g = window.game;
     // Player is just a camera with collision detection
     g.player = g.camera; // g.camera should already be initialized in main.js
-    
+    g.player.position.set(0, 1.7, 0); // Initial position
+
+    // Create Rapier rigid body and collider for the player
+    const playerHeight = 1.7;
+    const playerRadius = 0.4;
+    const rigidBodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
+        .setTranslation(g.player.position.x, g.player.position.y, g.player.position.z);
+    g.playerRigidBody = g.rapierWorld.createRigidBody(rigidBodyDesc);
+
+    const colliderDesc = RAPIER.ColliderDesc.capsuleY(playerHeight / 2 - playerRadius, playerRadius)
+        .setTranslation(0, playerHeight / 2, 0) // Center the capsule
+        .setRestitution(0.1)
+        .setFriction(0.5);
+    g.playerCollider = g.rapierWorld.createCollider(colliderDesc, g.playerRigidBody);
+    g.playerCollider.setUserData({ type: 'player' }); // For collision identification
+
     // Initialize player movement variables
-    g.playerVelocity = new THREE.Vector3(0, 0, 0);
+    g.playerVelocity = new THREE.Vector3(0, 0, 0); // This will now be used to calculate desired Rapier body velocity
     g.playerDirection = new THREE.Vector3(0, 0, 0);
     
     // Set up player controls (movement handled in keyDown/keyUp)
@@ -418,29 +434,32 @@ window.game.jump = function() {
     g.jumpForce = 0.15;
 };
 
-window.game.checkPlayerCollision = function(pos) { // pos is a parameter
-    const g = window.game;
-    const radius = 0.4; // horizontal collision radius
-    const playerHeight = 1.7; // eye height above ground
-    for (const obj of g.scene.children) { // Use g.scene
-        if (obj.geometry && obj.geometry.type === 'BoxGeometry') {
-            const box = new THREE.Box3().setFromObject(obj);
-            // Only check collision if vertical ranges overlap
-            const playerMinY = pos.y - playerHeight; // pos is parameter
-            const playerMaxY = pos.y; // pos is parameter
-            if (box.min.y > playerMaxY || box.max.y < playerMinY) continue;
-            // Check overlap in XZ plane only
-            if (pos.x + radius > box.min.x && pos.x - radius < box.max.x &&
-                pos.z + radius > box.min.z && pos.z - radius < box.max.z) {
-                return true;
-            }
-        }
-    }
-    return false;
-};
+// window.game.checkPlayerCollision = function(pos) { // pos is a parameter
+//     const g = window.game;
+//     const radius = 0.4; // horizontal collision radius
+//     const playerHeight = 1.7; // eye height above ground
+//     for (const obj of g.scene.children) { // Use g.scene
+//         if (obj.geometry && obj.geometry.type === 'BoxGeometry') {
+//             const box = new THREE.Box3().setFromObject(obj);
+//             // Only check collision if vertical ranges overlap
+//             const playerMinY = pos.y - playerHeight; // pos is parameter
+//             const playerMaxY = pos.y; // pos is parameter
+//             if (box.min.y > playerMaxY || box.max.y < playerMinY) continue;
+//             // Check overlap in XZ plane only
+//             if (pos.x + radius > box.min.x && pos.x - radius < box.max.x &&
+//                 pos.z + radius > box.min.z && pos.z - radius < box.max.z) {
+//                 return true;
+//             }
+//         }
+//     }
+//     return false;
+// };
 
 window.game.updatePlayer = function() { 
     const g = window.game;
+
+    if (!g.playerRigidBody) return;
+
     // Reset player direction
     g.playerDirection.x = 0;
     g.playerDirection.z = 0;
@@ -508,34 +527,51 @@ window.game.updatePlayer = function() {
         }
     }
     
-    // --- COLLISION HANDLING: resolve axes separately ---
-    const currPos = g.camera.position.clone();
-    const dx = g.playerVelocity.x;
-    const dz = g.playerVelocity.z;
-    // X axis
-    const xPos = currPos.clone().add(new THREE.Vector3(dx, 0, 0));
-    if (g.checkPlayerCollision && !g.checkPlayerCollision(xPos)) { 
-        g.camera.position.x = xPos.x;
-    }
-    // Z axis
-    const zPos = currPos.clone().add(new THREE.Vector3(0, 0, dz));
-    if (g.checkPlayerCollision && !g.checkPlayerCollision(zPos)) { 
-        g.camera.position.z = zPos.z;
-    }
+    // --- RAPIER PHYSICS UPDATE ---
+    // Get current Rapier body position
+    const currentPosition = g.playerRigidBody.translation();
+    let targetPosition = new THREE.Vector3(currentPosition.x, currentPosition.y, currentPosition.z);
 
-    // Y axis (jumping)
-    g.camera.position.y += g.playerVelocity.y;
+    // Apply calculated XZ velocity to target position
+    targetPosition.x += g.playerVelocity.x; // playerVelocity now stores delta for this frame
+    targetPosition.z += g.playerVelocity.z;
+
+    // Handle Y-axis movement (jumping/gravity)
+    // This is a simplified gravity/jump. For more robust character control with Rapier,
+    // a character controller (kinematic body with manual collision resolution or specific Rapier CharacterController) is better.
+    // For now, we'll directly manipulate the Y position and let Rapier handle collisions.
+    if (g.isJumping) {
+        g.jumpForce -= 0.5 * g.deltaTime; // Gravity
+        targetPosition.y += g.jumpForce;
+
+        // Basic ground check - this will be improved by Rapier's collisions
+        if (targetPosition.y <= (g.isSliding ? 0.8 : 1.7)) {
+            targetPosition.y = g.isSliding ? 0.8 : 1.7;
+            g.isJumping = false;
+            g.jumpForce = 0;
+        }
+    } else {
+        // Apply a small downward force if not jumping to ensure ground contact if needed
+        // or simply set to ground height. For kinematic, direct setting is okay.
+        targetPosition.y = g.isSliding ? 0.8 : 1.7;
+    }
     
-    // Simple boundary check
+    // Set the next kinematic position for the Rapier body
+    g.playerRigidBody.setNextKinematicTranslation(targetPosition);
+
+    // Update camera position to follow the Rapier body
+    // The Rapier body's position is the source of truth.
+    const rapierPos = g.playerRigidBody.translation();
+    g.camera.position.set(rapierPos.x, rapierPos.y, rapierPos.z);
+
+    // Simple boundary check (can also be enforced by static colliders in Rapier)
     g.camera.position.x = Math.max(-49, Math.min(49, g.camera.position.x));
     g.camera.position.z = Math.max(-49, Math.min(49, g.camera.position.z));
-    
-    // Force y position if not jumping (keep player on ground)
-    if (!g.isJumping) {
-        g.camera.position.y = g.isSliding ? 0.8 : 1.7;
-    }
-    
-    // Reset velocity for next frame
+    // Ensure playerRigidBody is also clamped if these boundaries are strict
+    // g.playerRigidBody.setTranslation(new RAPIER.Vector3(g.camera.position.x, g.camera.position.y, g.camera.position.z), true);
+
+
+    // Reset frame-specific velocity (used for calculating delta, not physics accumulation)
     g.playerVelocity.set(0, 0, 0);
 };
 

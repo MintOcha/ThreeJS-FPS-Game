@@ -1,5 +1,6 @@
 // Enemy system module
 import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d';
 // Removed imports for showDamageNumber, updateEnemyHealthBar, damagePlayer
 // as they will be accessed via window.game
 
@@ -65,18 +66,34 @@ window.game.spawnEnemy = function() {
     
     // Add to scene
     g.scene.add(enemyMesh);
+
+    // Create Rapier rigid body and collider for the enemy
+    const enemySize = { x: 1, y: 2, z: 1 }; // Matches BoxGeometry
+    const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(spawnPos.x, spawnPos.y, spawnPos.z)
+        .setLinvel(0, 0, 0) // Initial velocity
+        .setCanSleep(false); // Keep enemies active
+    const enemyRigidBody = g.rapierWorld.createRigidBody(rigidBodyDesc);
+
+    const colliderDesc = RAPIER.ColliderDesc.cuboid(enemySize.x / 2, enemySize.y / 2, enemySize.z / 2)
+        .setRestitution(0.1)
+        .setFriction(0.5)
+        .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS); // To detect collisions
+    const enemyCollider = g.rapierWorld.createCollider(colliderDesc, enemyRigidBody);
     
     // Create enemy object
     const enemy = {
         id: `enemy-${Date.now()}-${Math.random()}`,
         mesh: enemyMesh,
-        velocity: new THREE.Vector3(),
+        rigidBody: enemyRigidBody, // Store Rapier body
+        collider: enemyCollider,   // Store Rapier collider
         health: health,
         maxHealth: health,
-        speed: 0.05, // TODO: Consider making this wave-dependent or part of window.game.config
+        speed: 2.0, // Adjusted speed for Rapier's velocity system (units/second)
         attackCooldown: 0,
         lastAttackTime: 0
     };
+    enemyCollider.setUserData({ type: 'enemy', id: enemy.id, enemyObject: enemy }); // For collision identification
     
     // Add to enemies array
     g.enemies.push(enemy);
@@ -85,37 +102,47 @@ window.game.spawnEnemy = function() {
 window.game.updateEnemies = function() {
     const g = window.game;
     for (const enemy of g.enemies) {
+        if (!enemy.rigidBody) continue;
+
         // Update attack cooldown
         if (enemy.attackCooldown > 0) {
             enemy.attackCooldown -= g.deltaTime;
         }
         
-        // Move towards player
-        if (!g.camera) return; // Ensure camera is initialized
-        const direction = new THREE.Vector3().subVectors(g.camera.position, enemy.mesh.position);
-        direction.y = 0; // Keep enemy on ground
-        direction.normalize();
+        // Move towards player using Rapier physics
+        if (!g.playerRigidBody) return; // Ensure player physics body is initialized
+
+        const enemyPos = enemy.rigidBody.translation();
+        const playerPos = g.playerRigidBody.translation();
+
+        const direction = new THREE.Vector3(playerPos.x - enemyPos.x, 0, playerPos.z - enemyPos.z);
+        direction.normalize(); // Keep enemy on ground for movement calculation
         
-        // Set velocity based on direction and speed
-        enemy.velocity.x = direction.x * enemy.speed;
-        enemy.velocity.z = direction.z * enemy.speed;
+        // Set linear velocity for the enemy's rigid body
+        const desiredVelocity = new RAPIER.Vector3(direction.x * enemy.speed, enemy.rigidBody.linvel().y, direction.z * enemy.speed);
+        enemy.rigidBody.setLinvel(desiredVelocity, true);
         
-        // Apply velocity
-        enemy.mesh.position.x += enemy.velocity.x;
-        enemy.mesh.position.z += enemy.velocity.z;
+        // Synchronize Three.js mesh with Rapier rigid body
+        const currentPosition = enemy.rigidBody.translation();
+        enemy.mesh.position.set(currentPosition.x, currentPosition.y, currentPosition.z);
         
-        // Make enemy face player
-        enemy.mesh.lookAt(new THREE.Vector3(g.camera.position.x, enemy.mesh.position.y, g.camera.position.z));
+        // Make enemy face player (visual only, physics rotation might be handled differently if needed)
+        enemy.mesh.lookAt(new THREE.Vector3(playerPos.x, enemy.mesh.position.y, playerPos.z));
         
-        // Check for attack range
-        const distanceToPlayer = enemy.mesh.position.distanceTo(g.camera.position);
-        if (distanceToPlayer < 1.5 && enemy.attackCooldown <= 0) {
-            // Attack player
-            if(window.game.damagePlayer) window.game.damagePlayer(10); 
+        // Check for attack range (using Rapier positions) - This is now handled by Rapier collision events in main.js
+        // const distanceToPlayer = Math.sqrt(
+        //     Math.pow(playerPos.x - enemyPos.x, 2) +
+        //     Math.pow(playerPos.y - enemyPos.y, 2) + // Consider Y distance for attack range
+        //     Math.pow(playerPos.z - enemyPos.z, 2)
+        // );
+
+        // if (distanceToPlayer < 1.8 && enemy.attackCooldown <= 0) { // Slightly increased range
+        //     // Attack player - Handled by collision event
+        //     // if(window.game.damagePlayer) window.game.damagePlayer(10);
             
-            // Set attack cooldown
-            enemy.attackCooldown = 1.0; // 1 second between attacks
-        }
+        //     // Set attack cooldown - Handled by collision event
+        //     // enemy.attackCooldown = 1.0; // 1 second between attacks
+        // }
         
         // Update enemy health bar position if visible
         // g.enemyHealthBars is managed by ui.js / effects.js, updated via updateEnemyHealthBar
@@ -187,6 +214,16 @@ window.game.killEnemy = function(enemy) {
     const g = window.game;
     // Remove from scene
     if (g.scene) g.scene.remove(enemy.mesh);
+
+    // Remove Rapier rigid body and collider
+    if (enemy.rigidBody) {
+        g.rapierWorld.removeRigidBody(enemy.rigidBody);
+    }
+    // Note: Colliders associated with the rigid body are typically removed automatically.
+    // If not, or if collider is managed separately:
+    // if (enemy.collider) {
+    //     g.rapierWorld.removeCollider(enemy.collider, false); // false if it's attached to a body being removed
+    // }
     
     // Remove health bar if it exists
     if (g.enemyHealthBars && g.enemyHealthBars[enemy.id]) {

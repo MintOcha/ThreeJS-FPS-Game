@@ -372,45 +372,8 @@ window.game.shoot = function() {
                 const spreadY = (Math.random() - 0.5) * spread;
 
                 g.raycaster.setFromCamera(new THREE.Vector2(spreadX, spreadY), g.camera);
-                if(g.createBulletTracer) g.createBulletTracer(g.raycaster.ray.direction); 
-
-                const intersects = g.raycaster.intersectObjects(g.scene.children, true); 
-                let pierceCount = typeof weapon.pierce === 'number' ? weapon.pierce : 1; 
-                let piercedObjects = 0;
-
-                for (let j = 0; j < intersects.length; j++){ 
-                    let hit = intersects[j];
-
-                    if (hit.object === g.camera || 
-                        (g.bullets && g.bullets.some(b => b.bullet === hit.object)) ||
-                        (g.explosions && g.explosions.some(e => e.mesh === hit.object)) ||
-                        Object.values(g.weapons).some(w => w.model && (w.model === hit.object || w.model.children.includes(hit.object))))
-                    {
-                        continue; 
-                    }
-
-                    piercedObjects++; 
-
-                    const enemy = g.enemies && g.enemies.find(e => e.mesh === hit.object); 
-                    if (enemy) {
-                        const distance = g.camera.position.distanceTo(hit.point);
-                        let damage = weapon.damage;
-                        if (distance > weapon.minRange && weapon.maxRange > weapon.minRange) { 
-                            const dropOffFactor = Math.min(1, Math.max(0, (distance - weapon.minRange) / (weapon.maxRange - weapon.minRange)));
-                            damage *= (1 - dropOffFactor * (1 - weapon.minDamagePercent));
-                        }
-                        if(g.damageEnemy) g.damageEnemy(enemy, Math.round(damage), hit.point);
-
-                        if (piercedObjects >= pierceCount) {
-                            break; 
-                        }
-                    } else {
-                        if(g.createBulletImpact) g.createBulletImpact(hit.point, hit.face.normal); 
-                        if (piercedObjects >= pierceCount) {
-                            break; 
-                        }
-                    }
-                } 
+                // Create the bullet tracer/Rapier body. Hit detection is now handled by Rapier.
+                if(g.createBulletTracer) g.createBulletTracer(g.raycaster.ray.direction.clone());
             } 
 
             weapon.currentAmmo--;
