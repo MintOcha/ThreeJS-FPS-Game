@@ -20,8 +20,11 @@ window.game.createPlayer = function() {
         .setTranslation(g.player.position.x, g.player.position.y, g.player.position.z);
     g.playerRigidBody = g.rapierWorld.createRigidBody(rigidBodyDesc);
 
-    const colliderDesc = RAPIER.ColliderDesc.capsuleY(playerHeight / 2 - playerRadius, playerRadius)
-        .setTranslation(0, playerHeight / 2, 0) // Center the capsule
+    // Assuming playerHeight is total height, playerRadius is radius of hemispheres.
+    // The first arg to .capsule() is half the height of the cylindrical part.
+    const cylindricalHalfHeight = playerHeight / 2 - playerRadius;
+    const colliderDesc = RAPIER.ColliderDesc.capsule(cylindricalHalfHeight, playerRadius)
+        .setTranslation(0, playerHeight / 2, 0) // Center the capsule. Note: Rapier's capsule center is the center of the cylindrical part.
         .setRestitution(0.1)
         .setFriction(0.5);
     g.playerCollider = g.rapierWorld.createCollider(colliderDesc, g.playerRigidBody);

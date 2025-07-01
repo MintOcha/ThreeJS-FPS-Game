@@ -158,7 +158,7 @@ window.game = {
 };
 
 // Initialize the game
-function setup() {
+async function setup() { // Changed to async
     // Initialize the renderer
     const g = window.game;
     g.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -169,8 +169,25 @@ function setup() {
     g.clock.start();
 
     // Initialize Rapier
+    await RAPIER.init({}); // Pass empty object for default initialization
     const gravity = { x: 0.0, y: -9.81, z: 0.0 };
     g.rapierWorld = new RAPIER.World(gravity);
+
+    if (!g.rapierWorld.integrationParameters) {
+        console.log("IntegrationParameters missing after world creation, attempting to explicitly create and assign.");
+        try {
+            const params = new RAPIER.IntegrationParameters();
+            g.rapierWorld.integrationParameters = params; // Assign to the world instance
+            console.log("Successfully assigned new IntegrationParameters:", g.rapierWorld.integrationParameters);
+        } catch (e) {
+            console.error("Error creating or assigning IntegrationParameters:", e);
+            // If this fails, the simulation likely can't run.
+            // Consider preventing game start or showing an error.
+        }
+    } else {
+        console.log("Rapier world created. Integration params initially present:", g.rapierWorld.integrationParameters);
+    }
+
     g.rapierEventQueue = new RAPIER.EventQueue(true);
   
     // Setup UI
@@ -214,8 +231,10 @@ function animate() {
     g.deltaTime = g.clock.getDelta();
     
     // Step the Rapier world
-    if (g.rapierWorld) {
+    if (g.rapierWorld && g.rapierWorld.integrationParameters) {
         g.rapierWorld.step(g.rapierEventQueue);
+    } else if (g.rapierWorld) {
+        console.error("Rapier world exists, but integrationParameters are missing before step! Current params:", g.rapierWorld.integrationParameters);
     }
 
     // Process collision events
