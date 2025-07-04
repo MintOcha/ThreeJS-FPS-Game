@@ -1,25 +1,26 @@
-// Entry point for Enhanced FPS Game
-import * as THREE from 'three';
-// All module functions are now expected to be on window.game
-// and called via window.game.functionName() if needed by main.js directly.
+// Entry point for Enhanced FPS Game with Babylon.js and Modern Physics
 
-// Create a global game object to hold all game state
+// Create and initialize the global game object
 window.game = {
-    // Scene, renderer, camera
-    scene: new THREE.Scene(),
-    camera: new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000),
-    renderer: new THREE.WebGLRenderer({ antialias: true }),
-    clock: new THREE.Clock(),
+    // Babylon.js core objects
+    engine: null,
+    scene: null,
+    camera: null,
+    canvas: null,
+    physicsPlugin: null,
+    
+    // Game timing
     deltaTime: 0,
+    lastTime: 0,
     
     // Player
     player: null,
+    playerController: null,
+    playerAggregate: null,
     moveForward: false,
     moveBackward: false,
     moveLeft: false,
     moveRight: false,
-    playerVelocity: new THREE.Vector3(0, 0, 0),
-    playerDirection: new THREE.Vector3(0, 0, 0),
     isSprinting: false,
     isSliding: false,
     slideTimer: 0,
@@ -32,15 +33,23 @@ window.game = {
     lastHealthRegen: 0,
     healthRegenDelay: 8000,
     healthRegenRate: 5,
-    baseSensitivity: 0.002,
-    sensitivity: 0.002,
+    
+    // Input state for character controller (will be initialized after BABYLON loads)
+    inputDirection: null,
+    characterOrientation: null,
+    characterGravity: null,
+    inAirSpeed: 8.0,
+    onGroundSpeed: 10.0,
+    jumpHeight: 1.5,
+    wantJump: 0,
+    characterState: "IN_AIR", // "IN_AIR", "ON_GROUND", "START_JUMP"
     
     // Weapons
     WEAPON_RIFLE: 1,
     WEAPON_SHOTGUN: 2,
     WEAPON_ROCKET: 3, 
     WEAPON_MELEE: 4,
-    currentWeapon: 1, // Start with rifle
+    currentWeapon: 1,
     weaponModels: {},
     isReloading: false,
     isADS: false,
@@ -59,8 +68,8 @@ window.game = {
     isWaveTransition: false,
     
     // Raycasting
-    raycaster: null,
-    mouse: new THREE.Vector2(),
+    ray: null,
+    mouse: null, // Will be initialized as BABYLON.Vector2()
     
     // UI
     uiContainer: null,
@@ -143,79 +152,168 @@ window.game = {
         }
     },
     
-    // Sound
+    // Sound (using Babylon.js audio)
     sounds: {
-        hit: new Howl({ src: ['hit.mp3'], onloaderror: (id,err) => console.error("Howler failed:", err) }),
-        reload: new Howl({ src: ['reload.mp3'], onloaderror: (id,err) => console.error("Howler failed:", err) }),
-        shoot: new Howl({ src: ['shoot.mp3'], onloaderror: (id,err) => console.error("Howler failed:", err) })
+        hit: null,
+        reload: null,
+        shoot: null
     }
 };
 
-// Initialize the game
-function setup() {
-    // Initialize the renderer
-    const g = window.game;
-    g.renderer.setSize(window.innerWidth, window.innerHeight);
-    g.renderer.shadowMap.enabled = true;
-    document.body.appendChild(g.renderer.domElement);
-    
-    // Start the clock
-    g.clock.start();
-  
-    // Setup UI
-    if(g.setupUI) g.setupUI();
-    
-    // Setup lighting
-    if(g.setupLighting) g.setupLighting();
-    
-    // Create the world
-    if(g.createWorld) g.createWorld();
-    
-    // Create player
-    if(g.createPlayer) g.createPlayer();
-    
-    // Setup controls
-    if(g.setupControls) g.setupControls();
-    
-    // Initialize raycaster for shooting
-    g.raycaster = new THREE.Raycaster();
-    
-    // Create weapon models
-    if(g.createWeaponModels) g.createWeaponModels();
-    
-    // Event listeners for window resize
-    if(g.onWindowResize) window.addEventListener('resize', g.onWindowResize, false);
-    
-    // Show home screen
-    document.getElementById('home-screen').style.display = 'flex';
-    
-    // Start the game loop (even if not active yet)
-    animate();
+// Initialize the game with proper Babylon.js setup
+async function setup() {
+    try {
+        // Initialize BABYLON-dependent objects now that BABYLON is loaded
+        window.game.inputDirection = new BABYLON.Vector3(0, 0, 0);
+        window.game.characterOrientation = BABYLON.Quaternion.Identity();
+        window.game.characterGravity = new BABYLON.Vector3(0, -18, 0);
+        window.game.mouse = new BABYLON.Vector2();
+        
+        // Get canvas element or create it with proper styling
+        const canvas = document.getElementById('game-canvas') || document.createElement('canvas');
+        if (!document.getElementById('game-canvas')) {
+            canvas.id = 'game-canvas';
+            document.body.appendChild(canvas);
+        }
+        window.game.canvas = canvas;
+        
+        // Initialize Babylon.js engine with proper canvas handling
+        window.game.engine = new BABYLON.Engine(canvas, true, {
+            preserveDrawingBuffer: true,
+            stencil: true,
+            antialias: true,
+            adaptToDeviceRatio: true
+        });
+        
+        // Ensure canvas is properly sized
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // Create scene
+        window.game.scene = new BABYLON.Scene(window.game.engine);
+        
+        // Initialize physics with proper Havok setup
+        let physicsPlugin;
+        try {
+            // Initialize Havok physics properly using the UMD version
+            const havokInstance = await HavokPhysics();
+            physicsPlugin = new BABYLON.HavokPlugin(true, havokInstance);
+            window.game.physicsPlugin = physicsPlugin;
+            window.game.scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), physicsPlugin);
+            console.log("Using Havok physics");
+        } catch (e) {
+            try {
+                // Fallback to CannonJS if available
+                console.log("Havok not available, trying CannonJS");
+                physicsPlugin = new BABYLON.CannonJSPlugin();
+                window.game.physicsPlugin = physicsPlugin;
+                window.game.scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), physicsPlugin);
+                console.log("Using CannonJS physics");
+            } catch (e2) {
+                // No physics engine available, continue without physics
+                console.log("No physics engine available, running without physics");
+                window.game.physicsPlugin = null;
+            }
+        }
+        
+        // Create FPS camera with proper configuration
+        window.game.camera = new BABYLON.UniversalCamera("playerCamera", new BABYLON.Vector3(0, 1.7, 0), window.game.scene);
+        window.game.camera.setTarget(new BABYLON.Vector3(0, 1.7, 1)); // Look forward, small distance
+        
+        // Initialize camera rotation to zero and ensure no quaternion conflicts
+        window.game.camera.rotation = new BABYLON.Vector3(0, 0, 0);
+        window.game.camera.rotationQuaternion = null; // Disable quaternion to avoid conflicts
+        
+        // Configure camera for FPS with proper sensitivity
+        window.game.camera.minZ = 0.1;
+        window.game.camera.maxZ = 1000;
+        window.game.camera.fov = Math.PI / 3; // 60 degrees
+        window.game.camera.angularSensibility = 1000; // Reduced sensitivity
+        window.game.camera.inertia = 0.0;
+        
+        // Disable default camera controls - we'll handle them manually
+        window.game.camera.attachControl(canvas, false);
+        
+        // Initialize timing
+        window.game.lastTime = performance.now();
+        
+        // Setup game components
+        if(window.game.setupUI) window.game.setupUI();
+        if(window.game.setupLighting) window.game.setupLighting();
+        if(window.game.createWorld) window.game.createWorld();
+        if(window.game.createPlayer) window.game.createPlayer();
+        if(window.game.setupControls) window.game.setupControls();
+        if(window.game.createWeaponModels) window.game.createWeaponModels();
+        
+        // Load sounds
+        loadSounds();
+        
+        // Setup window resize handling
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            window.game.engine.resize();
+        }, false);
+        
+        // Show home screen
+        const homeScreen = document.getElementById('home-screen');
+        if (homeScreen) homeScreen.style.display = 'flex';
+        
+        // Start the render loop
+        window.game.engine.runRenderLoop(() => {
+            animate();
+        });
+        
+        console.log("Game initialized successfully");
+        
+    } catch (error) {
+        console.error("Failed to initialize game:", error);
+    }
 }
 
-// Animation loop
+// Load game sounds
+function loadSounds() {
+    try {
+        window.game.sounds.hit = new BABYLON.Sound("hit", "hit.mp3", window.game.scene, null, {
+            loop: false,
+            autoplay: false
+        });
+        window.game.sounds.reload = new BABYLON.Sound("reload", "reload.mp3", window.game.scene, null, {
+            loop: false,
+            autoplay: false
+        });
+        window.game.sounds.shoot = new BABYLON.Sound("shoot", "shoot.mp3", window.game.scene, null, {
+            loop: false,
+            autoplay: false
+        });
+    } catch (error) {
+        console.warn("Could not load some sound files:", error);
+    }
+}
+
+// Animation loop with proper Babylon.js integration
 function animate() {
-    requestAnimationFrame(animate);
-    
     const g = window.game;
+    const currentTime = performance.now();
     
     // Update deltaTime
-    g.deltaTime = g.clock.getDelta();
+    g.deltaTime = (currentTime - g.lastTime) / 1000;
+    g.lastTime = currentTime;
     
     // Skip game logic when paused or game over
     if (g.gameActive && !g.isPaused) {
         // Handle automatic shooting
-        if (g.isShooting && g.weapons[g.currentWeapon].automatic) {
+        if (g.isShooting && g.weapons[g.currentWeapon] && g.weapons[g.currentWeapon].automatic) {
             if(g.shoot) g.shoot();
         }
         
-        // Update player movement
-        if(g.updatePlayer) g.updatePlayer();
+        // Update player movement and physics
+        if(g.updatePlayerPhysics) g.updatePlayerPhysics();
         
         // Update weapons position
         if(g.updateWeaponPosition) g.updateWeaponPosition();
         
-        // Update bullets, explosions, and enemies
+        // Update game objects
         if(g.updateBullets) g.updateBullets();
         if(g.updateExplosions) g.updateExplosions();
         if(g.updateEnemies) g.updateEnemies(); 
@@ -230,24 +328,9 @@ function animate() {
         }
     }
     
-    // First render the main scene
-    g.renderer.render(g.scene, g.camera);
-    
-    // Then render weapon on top using the same camera
-    if (g.gameActive && window.weaponViewport) {
-        // Preserve the renderer's state
-        const currentAutoClear = g.renderer.autoClear;
-        g.renderer.autoClear = false; // Prevent clearing what we just rendered
-        
-        // Render the weapon viewport
-        g.renderer.render(window.weaponViewport, g.camera);
-        
-        // Restore renderer state
-        g.renderer.autoClear = currentAutoClear;
-    }
+    // Render the scene
+    g.scene.render();
 }
 
 // Start the game on load
 window.addEventListener('load', setup);
-
-// No need to export variables that are stored in the window.game object

@@ -1,70 +1,51 @@
-// World/scene module
-import * as THREE from 'three';
-
-// We're using the global game object for all game state
-// so we don't need to export scene, camera, etc.
-
-// Initialize renderer settings (if game object hasn't been created yet, we'll do this in setupLighting)
-// The renderer is added to the document in main.js
+// World/scene module for Babylon.js
 
 // Setup lighting in the scene
 window.game.setupLighting = function() {
     const g = window.game;
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    g.scene.add(ambientLight);
+    // Ambient light
+    const ambientLight = new BABYLON.HemisphericLight("ambientLight", new BABYLON.Vector3(0, 1, 0), g.scene);
+    ambientLight.intensity = 0.6;
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(50, 200, 100);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 1024;
-    directionalLight.shadow.mapSize.height = 1024;
-    g.scene.add(directionalLight);
+    // Directional light for shadows
+    const directionalLight = new BABYLON.DirectionalLight("dirLight", new BABYLON.Vector3(-1, -1, -1), g.scene);
+    directionalLight.position = new BABYLON.Vector3(50, 200, 100);
+    directionalLight.intensity = 0.8;
+    
+    // Enable shadows
+    const shadowGenerator = new BABYLON.ShadowGenerator(1024, directionalLight);
+    shadowGenerator.useBlurExponentialShadowMap = true;
+    shadowGenerator.blurKernel = 32;
+    g.shadowGenerator = shadowGenerator;
 
-    // setup skybox
-    const loader = new THREE.CubeTextureLoader();
-    // Ensure the paths are correct relative to your HTML file.
-    // The order is: +X, -X, +Y, -Y, +Z, -Z (positive x, negative x, etc.)
-    const texture = loader.load([
-      'skybox.jpg', // Right face
-      'skybox.jpg', // Left face
-      'skybox.jpg', // Top face
-      'skybox.jpg', // Bottom face
-      'skybox.jpg', // Front face
-      'skybox.jpg'  // Back face
-    ],
-    () => {
-        console.log('Skybox textures loaded successfully.');
-        g.scene.background = texture;
-    },
-    undefined, // onProgress callback not needed here
-    (error) => {
-        console.error('An error occurred loading the skybox textures:', error);
-    });
-
-    // --- Set solid colour bg if it doesn't work ---
-    g.scene.background = new THREE.Color(0x87CEEB); // Sky blue color
+    // Set sky color background
+    g.scene.clearColor = new BABYLON.Color3(0.53, 0.81, 0.92); // Sky blue
 };
 
 window.game.createWorld = function() {
     const g = window.game;
     
     // Floor
-    const floorGeometry = new THREE.PlaneGeometry(100, 100);
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x999999 });
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    g.scene.add(floor);
+    const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 100, height: 100}, g.scene);
+    const groundMaterial = new BABYLON.StandardMaterial("groundMat", g.scene);
+    groundMaterial.diffuseColor = new BABYLON.Color3(0.6, 0.6, 0.6);
+    ground.material = groundMaterial;
+    ground.receiveShadows = true;
     
-    // Walls and obstacles using boxes
-    const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x0088ff });
+    // Add physics to ground using modern PhysicsAggregate
+    const groundAggregate = new BABYLON.PhysicsAggregate(ground, BABYLON.PhysicsShapeType.BOX, 
+        { mass: 0, restitution: 0.1, friction: 0.8 }, g.scene);
+    
+    // Wall material
+    const wallMaterial = new BABYLON.StandardMaterial("wallMat", g.scene);
+    wallMaterial.diffuseColor = new BABYLON.Color3(0, 0.53, 1);
     
     // Outer walls
-    if(g.createWall) g.createWall(-50, 2.5, 0, 1, 5, 100, wallMaterial); // Left
-    if(g.createWall) g.createWall(50, 2.5, 0, 1, 5, 100, wallMaterial);  // Right
-    if(g.createWall) g.createWall(0, 2.5, -50, 100, 5, 1, wallMaterial); // Back
-    if(g.createWall) g.createWall(0, 2.5, 50, 100, 5, 1, wallMaterial);  // Front
+    g.createWall(-50, 2.5, 0, 1, 5, 100, wallMaterial); // Left
+    g.createWall(50, 2.5, 0, 1, 5, 100, wallMaterial);  // Right
+    g.createWall(0, 2.5, -50, 100, 5, 1, wallMaterial); // Back
+    g.createWall(0, 2.5, 50, 100, 5, 1, wallMaterial);  // Front
     
     // Inner structures - Random boxes and platforms
     for (let i = 0; i < 15; i++) {
@@ -72,30 +53,31 @@ window.game.createWorld = function() {
         const height = 1 + Math.random() * 4;
         const x = (Math.random() - 0.5) * 80;
         const z = (Math.random() - 0.5) * 80;
-        if(g.createWall) g.createWall(x, height/2, z, size, height, size, wallMaterial);
+        g.createWall(x, height/2, z, size, height, size, wallMaterial);
     }
     
     // Add some platforms
-    if(g.createWall) g.createWall(-20, 3, -20, 10, 0.5, 10, wallMaterial);
-    if(g.createWall) g.createWall(20, 5, 20, 15, 0.5, 15, wallMaterial);
-    if(g.createWall) g.createWall(0, 7, 0, 8, 0.5, 8, wallMaterial);
+    g.createWall(-20, 3, -20, 10, 0.5, 10, wallMaterial);
+    g.createWall(20, 5, 20, 15, 0.5, 15, wallMaterial);
+    g.createWall(0, 7, 0, 8, 0.5, 8, wallMaterial);
 };
 
 // Helper function to create walls
 window.game.createWall = function(x, y, z, width, height, depth, material) {
     const g = window.game;
-    const geometry = new THREE.BoxGeometry(width, height, depth);
-    const wall = new THREE.Mesh(geometry, material);
-    wall.position.set(x, y, z);
-    wall.castShadow = true;
-    wall.receiveShadow = true;
-    g.scene.add(wall);
+    const wall = BABYLON.MeshBuilder.CreateBox("wall", {width: width, height: height, depth: depth}, g.scene);
+    wall.position = new BABYLON.Vector3(x, y, z);
+    wall.material = material;
+    wall.receiveShadows = true;
+    
+    // Add to shadow casters
+    if (g.shadowGenerator) {
+        g.shadowGenerator.addShadowCaster(wall);
+    }
+    
+    // Add physics using modern PhysicsAggregate
+    const wallAggregate = new BABYLON.PhysicsAggregate(wall, BABYLON.PhysicsShapeType.BOX, 
+        { mass: 0, restitution: 0.1, friction: 0.8 }, g.scene);
+    
     return wall;
-};
-
-window.game.onWindowResize = function() {
-    const g = window.game;
-    g.camera.aspect = window.innerWidth / window.innerHeight;
-    g.camera.updateProjectionMatrix();
-    g.renderer.setSize(window.innerWidth, window.innerHeight);
 };

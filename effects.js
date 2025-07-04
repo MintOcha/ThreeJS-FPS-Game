@@ -1,16 +1,5 @@
-// Effects module (bullets, explosions, damage numbers)
-import * as THREE from 'three';
-// Using the global game object for scene, camera and deltaTime instead of imports
-// Removed import for damagePlayer, will use window.game.damagePlayer
-// Removed import for damageEnemy, will use window.game.damageEnemy
+// Effects module (bullets, explosions, damage numbers) for Babylon.js
 
-// The 'bullets' and 'explosions' arrays are now managed on window.game.
-// This module's functions will modify window.game.bullets and window.game.explosions directly.
-
-// We'll expose these constants locally to avoid circular imports (though prefer window.game for safety)
-const LOCAL_WEAPON_ROCKET = 3; // Must match window.game.WEAPON_ROCKET
-
-// Functions will be assigned to window.game
 window.game.createBulletTracer = function(direction) {
     const g = window.game;
     const weapon = g.weapons[g.currentWeapon];
@@ -23,43 +12,43 @@ window.game.createBulletTracer = function(direction) {
     
     // Calculate muzzle position based on weapon model
     let muzzlePosition;
-    let muzzleOffset = 0.7; // Default offset from camera
+    let muzzleOffset = 0.7;
     
     if (weapon.muzzleFlash) {
         // Get world position of the muzzle
-        muzzlePosition = new THREE.Vector3();
-        weapon.muzzleFlash.getWorldPosition(muzzlePosition);
+        muzzlePosition = weapon.muzzleFlash.getAbsolutePosition();
         
         // Add slight offset to prevent collision with weapon
-        const offsetVector = direction.clone().multiplyScalar(0.1);
-        muzzlePosition.add(offsetVector);
+        const offsetVector = direction.clone().scale(0.1);
+        muzzlePosition.addInPlace(offsetVector);
     } else {
         // Fallback if no muzzle flash reference
-        muzzlePosition = new THREE.Vector3().copy(g.camera.position);
-        const forwardOffset = direction.clone().multiplyScalar(muzzleOffset);
-        muzzlePosition.add(forwardOffset);
+        muzzlePosition = g.camera.position.clone();
+        const forwardOffset = direction.clone().scale(muzzleOffset);
+        muzzlePosition.addInPlace(forwardOffset);
     }
     
     // For tracer effect, make the bullet longer in its movement direction
     if (g.currentWeapon !== g.WEAPON_ROCKET) {
         // Scale bullet to be longer for tracer effect
-        bullet.scale.z = 3;
+        bullet.scaling.z = 3;
     }
     
     // Set bullet position at muzzle
-    bullet.position.copy(muzzlePosition);
+    bullet.position.copyFrom(muzzlePosition);
     
     // Point bullet in direction of travel
-    const targetPos = muzzlePosition.clone().add(direction);
+    const targetPos = muzzlePosition.add(direction);
     bullet.lookAt(targetPos);
     
     // Add bullet to scene
-    g.scene.add(bullet);
+    bullet.setParent(null);
+    bullet.setEnabled(true);
     
     // Store bullet data for animation
     const bulletData = {
         bullet: bullet,
-        velocity: direction.clone().multiplyScalar(weapon.bulletSpeed),
+        velocity: direction.clone().scale(weapon.bulletSpeed),
         created: Date.now(),
         // Lifetime depends on weapon type
         lifetime: g.currentWeapon === g.WEAPON_ROCKET ? 3000 : 1000
@@ -76,19 +65,21 @@ window.game.createRocket = function(position, direction) {
     const rocket = weapon.bulletModel.clone();
     
     // Set position slightly in front of camera
-    const rocketStart = direction.clone().multiplyScalar(0.7).add(position);
-    rocket.position.copy(rocketStart);
+    const rocketStart = direction.clone().scale(0.7).add(position);
+    rocket.position.copyFrom(rocketStart);
     
     // Orient rocket in direction of travel
-    rocket.lookAt(rocketStart.clone().add(direction));
+    const targetPos = rocketStart.add(direction);
+    rocket.lookAt(targetPos);
     
     // Add to scene
-    g.scene.add(rocket);
+    rocket.setParent(null);
+    rocket.setEnabled(true);
     
     // Store rocket data for animation
     const rocketData = {
         bullet: rocket,
-        velocity: direction.clone().multiplyScalar(weapon.bulletSpeed),
+        velocity: direction.clone().scale(weapon.bulletSpeed),
         created: Date.now(),
         lifetime: 3000,
         isRocket: true
@@ -100,15 +91,13 @@ window.game.createRocket = function(position, direction) {
 window.game.createExplosion = function(position, radius) {
     const g = window.game;
     // Create explosion sphere
-    const explosionGeo = new THREE.SphereGeometry(radius, 16, 16);
-    const explosionMat = new THREE.MeshBasicMaterial({
-        color: 0xff5500,
-        transparent: true,
-        opacity: 1.0
-    });
-    const explosion = new THREE.Mesh(explosionGeo, explosionMat);
-    explosion.position.copy(position);
-    g.scene.add(explosion);
+    const explosion = BABYLON.MeshBuilder.CreateSphere("explosion", {diameter: radius * 2, segments: 16}, g.scene);
+    const explosionMat = new BABYLON.StandardMaterial("explosionMat", g.scene);
+    explosionMat.diffuseColor = new BABYLON.Color3(1, 0.33, 0);
+    explosionMat.emissiveColor = new BABYLON.Color3(1, 0.33, 0);
+    explosionMat.alpha = 1.0;
+    explosion.material = explosionMat;
+    explosion.position.copyFrom(position);
     
     // Add to explosions array for animation
     g.explosions.push({
@@ -120,7 +109,7 @@ window.game.createExplosion = function(position, radius) {
     
     // Check for enemies in blast radius
     for (const enemy of g.enemies) {
-        const distance = enemy.mesh.position.distanceTo(position);
+        const distance = BABYLON.Vector3.Distance(enemy.mesh.position, position);
         if (distance <= radius * 1.5) {
             // Calculate damage based on distance (more damage closer to explosion)
             const damage = Math.round(g.weapons[g.WEAPON_ROCKET].damage * (1 - distance / (radius * 1.5)));
@@ -131,7 +120,7 @@ window.game.createExplosion = function(position, radius) {
     }
     
     // Check if player is in blast radius (self-damage)
-    const playerDistance = g.camera.position.distanceTo(position);
+    const playerDistance = BABYLON.Vector3.Distance(g.camera.position, position);
     if (playerDistance <= radius * 1.2) {
         // Calculate damage based on distance
         const damage = Math.round(20 * (1 - playerDistance / (radius * 1.2)));
@@ -144,30 +133,23 @@ window.game.createExplosion = function(position, radius) {
 window.game.createBulletImpact = function(position, normal) {
     const g = window.game;
     // Create a simple impact mark (small disc facing the normal)
-    const impactGeo = new THREE.CircleGeometry(0.05, 8);
-    const impactMat = new THREE.MeshBasicMaterial({
-        color: 0x333333,
-        transparent: true,
-        opacity: 0.8,
-        side: THREE.DoubleSide
-    });
-    const impact = new THREE.Mesh(impactGeo, impactMat);
+    const impact = BABYLON.MeshBuilder.CreateDisc("impact", {radius: 0.05, tessellation: 8}, g.scene);
+    const impactMat = new BABYLON.StandardMaterial("impactMat", g.scene);
+    impactMat.diffuseColor = new BABYLON.Color3(0.2, 0.2, 0.2);
+    impactMat.alpha = 0.8;
+    impact.material = impactMat;
     
     // Position slightly above surface to prevent z-fighting
-    const offset = normal.clone().multiplyScalar(0.01);
-    impact.position.copy(position).add(offset);
+    const offset = normal.clone().scale(0.01);
+    impact.position.copyFrom(position.add(offset));
     
     // Orient to face impact normal
-    impact.lookAt(position.clone().add(normal));
-    
-    // Add to scene
-    g.scene.add(impact);
+    const targetPos = position.add(normal);
+    impact.lookAt(targetPos);
     
     // Remove after delay
     setTimeout(() => {
-        g.scene.remove(impact);
-        impact.geometry.dispose();
-        impact.material.dispose();
+        impact.dispose();
     }, 5000);
 };
 
@@ -178,39 +160,34 @@ window.game.updateBullets = function() {
         const bullet = g.bullets[i];
         
         // Move bullet
-        bullet.bullet.position.add(bullet.velocity.clone().multiplyScalar(g.deltaTime));
+        bullet.bullet.position.addInPlace(bullet.velocity.scale(g.deltaTime));
         
         // Check for rocket collision with environment
         if (bullet.isRocket) {
-            g.raycaster.set(bullet.bullet.position, bullet.velocity.clone().normalize());
-            const intersects = g.raycaster.intersectObjects(g.scene.children, true);
+            const ray = new BABYLON.Ray(bullet.bullet.position, bullet.velocity.clone().normalize());
+            const hit = g.scene.pickWithRay(ray);
             
-            let hitFound = false;
-            for (const hit of intersects) {
-                // Skip hits on bullets, weapons, etc.
-                if (g.bullets.some(b => b.bullet === hit.object) || 
-                    Object.values(g.weapons).some(w => w.model === hit.object || 
-                    (w.model && w.model.children.includes(hit.object)))) {
+            if (hit.hit && hit.distance < 1.0) { // Close hit detection for rockets
+                // Skip hits on bullets, weapons, player
+                if (hit.pickedMesh === g.playerPhysicsBody || 
+                    g.bullets.some(b => b.bullet === hit.pickedMesh) ||
+                    Object.values(g.weapons).some(w => w.model && w.model.getChildMeshes().includes(hit.pickedMesh))) {
                     continue;
                 }
                 
                 // Skip hit on self (rocket)
-                if (hit.object === bullet.bullet) {
+                if (hit.pickedMesh === bullet.bullet) {
                     continue;
                 }
                 
                 // Explosion at hit point
-                if(g.createExplosion) g.createExplosion(hit.point, 5);
+                if(g.createExplosion) g.createExplosion(hit.pickedPoint, 5);
                 
                 // Remove rocket
-                g.scene.remove(bullet.bullet);
+                bullet.bullet.dispose();
                 g.bullets.splice(i, 1);
-                
-                hitFound = true;
-                break;
+                continue;
             }
-            
-            if (hitFound) continue;
         }
         
         // Check lifetime
@@ -222,7 +199,7 @@ window.game.updateBullets = function() {
             }
             
             // Remove bullet
-            g.scene.remove(bullet.bullet);
+            bullet.bullet.dispose();
             g.bullets.splice(i, 1);
         }
     }
@@ -240,15 +217,15 @@ window.game.updateExplosions = function() {
         if (progress < 0.5) {
             // Expand
             const scale = progress * 2;
-            explosion.mesh.scale.set(scale, scale, scale);
+            explosion.mesh.scaling.setAll(scale);
         } else {
             // Fade out
-            explosion.mesh.material.opacity = 1 - ((progress - 0.5) * 2);
+            explosion.mesh.material.alpha = 1 - ((progress - 0.5) * 2);
         }
         
         // Remove when lifetime is over
         if (progress >= 1) {
-            g.scene.remove(explosion.mesh);
+            explosion.mesh.dispose();
             g.explosions.splice(i, 1);
         }
     }
@@ -260,7 +237,7 @@ window.game.showDamageNumber = function(amount, position) {
     const damageDiv = document.createElement('div');
     damageDiv.textContent = amount.toString();
     damageDiv.style.position = 'absolute';
-    damageDiv.style.color = amount >= 100 ? '#ff0000' : '#ffffff'; // Change this in the future to accommodate headshots
+    damageDiv.style.color = amount >= 100 ? '#ff0000' : '#ffffff';
     damageDiv.style.fontWeight = amount >= 50 ? 'bold' : 'normal';
     damageDiv.style.fontSize = `${Math.min(16 + amount / 5, 30)}px`;
     damageDiv.style.textShadow = '1px 1px 2px black';
@@ -271,25 +248,25 @@ window.game.showDamageNumber = function(amount, position) {
     document.getElementById('damage-number-container').appendChild(damageDiv);
     
     // Convert 3D position to screen coordinates
-    const screenPosition = new THREE.Vector3().copy(position);
-    screenPosition.project(g.camera);
+    const screenPosition = BABYLON.Vector3.Project(
+        position,
+        BABYLON.Matrix.Identity(),
+        g.scene.getTransformMatrix(),
+        g.camera.viewport.toGlobal(g.engine.getRenderWidth(), g.engine.getRenderHeight())
+    );
     
-    const x = (screenPosition.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-(screenPosition.y * 0.5) + 0.5) * window.innerHeight;
+    const x = screenPosition.x;
+    const y = screenPosition.y;
     
     damageDiv.style.left = `${x}px`;
     damageDiv.style.top = `${y}px`;
     
-    // Animate and remove after delay
-    // let opacity = 1; // opacity is part of damageNumber object
-    // let posY = y; // position.y is part of damageNumber object
-    // const floatSpeed = 50; // pixels per second - not used directly here anymore
     const lastUpdate = Date.now();
     
     // Add to damage numbers array for animation
     g.damageNumbers.push({
         element: damageDiv,
-        position: { x, y: y }, // Use the calculated y
+        position: { x, y: y },
         opacity: 1,
         created: Date.now(),
         lastUpdate: lastUpdate
@@ -302,7 +279,7 @@ window.game.updateDamageNumbers = function() {
         const damageNumber = g.damageNumbers[i];
         const now = Date.now();
         const age = now - damageNumber.created;
-        const dt = (now - damageNumber.lastUpdate) / 1000; // seconds
+        const dt = (now - damageNumber.lastUpdate) / 1000;
         
         // Float upward
         damageNumber.position.y -= 50 * dt;
@@ -319,7 +296,7 @@ window.game.updateDamageNumbers = function() {
         
         // Remove if fully faded
         if (damageNumber.opacity <= 0 || age > 1000) {
-            if (damageNumber.element.parentNode) { // Check if still in DOM
+            if (damageNumber.element.parentNode) {
                 damageNumber.element.parentNode.removeChild(damageNumber.element);
             }
             g.damageNumbers.splice(i, 1);
@@ -333,23 +310,23 @@ window.game.updateEnemyHealthBar = function(enemy) {
     if (!g.enemyHealthBars[enemy.id]) {
         const barContainer = document.createElement('div');
         barContainer.style.position = 'absolute';
-        barContainer.style.width = '50px'; // Standardized width
-        barContainer.style.height = '5px'; // Standardized height
-        barContainer.style.backgroundColor = 'rgba(0,0,0,0.5)'; // Standardized background
-        barContainer.style.border = '1px solid rgba(255,255,255,0.3)'; // Standardized border
-        barContainer.style.pointerEvents = 'none'; // Standardized pointer events
+        barContainer.style.width = '50px';
+        barContainer.style.height = '5px';
+        barContainer.style.backgroundColor = 'rgba(0,0,0,0.5)';
+        barContainer.style.border = '1px solid rgba(255,255,255,0.3)';
+        barContainer.style.pointerEvents = 'none';
         
         const barFill = document.createElement('div');
         barFill.style.position = 'absolute';
         barFill.style.top = '0';
         barFill.style.left = '0';
         barFill.style.height = '100%';
-        barFill.style.backgroundColor = 'rgba(255,50,50,0.8)'; // Standardized fill color
-        barFill.style.width = '100%'; // Start full
+        barFill.style.backgroundColor = 'rgba(255,50,50,0.8)';
+        barFill.style.width = '100%';
         
         barContainer.appendChild(barFill);
         const containerElement = document.getElementById('enemy-health-bar-container');
-        if (containerElement) { // Ensure container exists
+        if (containerElement) {
             containerElement.appendChild(barContainer);
         }
         
@@ -366,13 +343,27 @@ window.game.updateEnemyHealthBar = function(enemy) {
     // Show health bar
     g.enemyHealthBars[enemy.id].container.style.visibility = 'visible';
     
+    // Position health bar above enemy
+    const enemyWorldPos = enemy.mesh.position.clone();
+    enemyWorldPos.y += 2.5;
+    
+    const screenPosition = BABYLON.Vector3.Project(
+        enemyWorldPos,
+        BABYLON.Matrix.Identity(),
+        g.scene.getTransformMatrix(),
+        g.camera.viewport.toGlobal(g.engine.getRenderWidth(), g.engine.getRenderHeight())
+    );
+    
+    g.enemyHealthBars[enemy.id].container.style.left = `${screenPosition.x - 25}px`;
+    g.enemyHealthBars[enemy.id].container.style.top = `${screenPosition.y}px`;
+    
     // Hide after delay
     if (enemy.healthBarTimeout) {
         clearTimeout(enemy.healthBarTimeout);
     }
     
     enemy.healthBarTimeout = setTimeout(() => {
-        if (g.enemyHealthBars[enemy.id]) { // Check if it still exists
+        if (g.enemyHealthBars[enemy.id]) {
             g.enemyHealthBars[enemy.id].container.style.visibility = 'hidden';
         }
     }, 2000);

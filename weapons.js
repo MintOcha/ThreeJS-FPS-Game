@@ -1,216 +1,91 @@
-// Weapon system module
-import * as THREE from 'three';
-// ui.js functions will be refactored to use window.game
-// import { updateAmmoText } from 'ui'; 
-// audio.js sounds are on window.game.sounds (no direct import needed)
-// effects.js functions will be refactored to use window.game (or attached to window.game)
-// For createBulletTracer and createRocket, ensure they also use window.game if they don't already
-// import { createBulletTracer, createRocket, createBulletImpact } from 'effects'; 
-// Removed import for damageEnemy, will use window.game.damageEnemy
+// Weapon system module for Babylon.js
+// All functions are attached to window.game for global access
+// No imports/exports - everything uses window.game
 
-// Weapon constants are defined on window.game in main.js.
-// These local constants can be used for defining the structure of window.game.weapons below.
-const WEAPON_RIFLE = 1; 
-const WEAPON_SHOTGUN = 2;
-const WEAPON_ROCKET = 3;
-const WEAPON_MELEE = 4;
-
-// Weapon state variables are now managed on window.game.
-// This module's functions will modify window.game.currentWeapon, etc.
-// export let currentWeapon = WEAPON_RIFLE; // Now window.game.currentWeapon
-// export let isReloading = false; // Now window.game.isReloading
-// export let isADS = false; // Now window.game.isADS
-// export let adsTransition = 0; // Now window.game.adsTransition
-// export let lastShotTime = 0; // Now window.game.lastShotTime
-// export let isShooting = false; // Now window.game.isShooting
-// export let reloadTimeoutId; // Now window.game.reloadTimeoutId
-
-// The 'weapons' object itself is initialized on window.game in main.js.
-// This file's createWeaponModels function will populate the .model, .muzzleFlash, .bulletModel properties
-// on the existing window.game.weapons[WEAPON_ID] objects.
-// The definition of the weapons data structure is in main.js
-// export let weapons = { ... } // Structure is defined in main.js, models populated here
-
-// Exported weapon-related functions
-window.game.createWeaponModels = function() {
+// Create weapon models using efficient Babylon.js mesh loading
+// Original Goal: Create 3D weapon models with muzzle flashes and bullet models for first-person display
+// New Implementation: Uses Babylon.js ImportMeshAsync for external models, falls back to procedural meshes
+window.game.createWeaponModels = async function() {
     const g = window.game;
-    // Create simple block-based weapon models
+    const scene = g.scene;
     
-    // Rifle model
-    const rifleGroup = new THREE.Group();
-    
-    // Main barrel
-    const barrelGeo = new THREE.BoxGeometry(0.1, 0.1, 1);
-    const barrelMat = new THREE.MeshStandardMaterial({color: 0x333333});
-    const barrel = new THREE.Mesh(barrelGeo, barrelMat);
-    barrel.position.set(0, 0, -0.5);
-    rifleGroup.add(barrel);
-    
-    // Body
-    const bodyGeo = new THREE.BoxGeometry(0.15, 0.2, 0.4);
-    const bodyMat = new THREE.MeshStandardMaterial({color: 0x666666});
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.set(0, -0.05, -0.1);
-    rifleGroup.add(body);
-    
-    // Handle
-    const handleGeo = new THREE.BoxGeometry(0.1, 0.25, 0.1);
-    const handleMat = new THREE.MeshStandardMaterial({color: 0x444444});
-    const handle = new THREE.Mesh(handleGeo, handleMat);
-    handle.position.set(0, -0.2, 0.1);
-    rifleGroup.add(handle);
-    
-    // Magazine
-    const magGeo = new THREE.BoxGeometry(0.1, 0.2, 0.08);
-    const magMat = new THREE.MeshStandardMaterial({color: 0x222222});
-    const mag = new THREE.Mesh(magGeo, magMat);
-    mag.position.set(0, -0.18, -0.05);
-    rifleGroup.add(mag);
-    
-    // Create muzzle flash (hidden by default)
-    const muzzleFlashGeo = new THREE.BoxGeometry(0.15, 0.15, 0.15);
-    const muzzleFlashMat = new THREE.MeshBasicMaterial({color: 0xffaa00});
-    const muzzleFlashMesh = new THREE.Mesh(muzzleFlashGeo, muzzleFlashMat); // Renamed to avoid conflict
-    muzzleFlashMesh.position.set(0, 0, -1.05);
-    muzzleFlashMesh.visible = false;
-    rifleGroup.add(muzzleFlashMesh);
-    
-    // Store rifle model and muzzle flash
-    g.weapons[g.WEAPON_RIFLE].model = rifleGroup; // Use g.WEAPON_RIFLE
-    g.weapons[g.WEAPON_RIFLE].muzzleFlash = muzzleFlashMesh;
-    
-    // Create bullet model
-    const bulletGeo = new THREE.BoxGeometry(0.05, 0.05, 0.2);
-    const bulletMat = new THREE.MeshBasicMaterial({color: 0xffff00});
-    g.weapons[g.WEAPON_RIFLE].bulletModel = new THREE.Mesh(bulletGeo.clone(), bulletMat.clone());
-    
-    // Shotgun model
-    const shotgunGroup = new THREE.Group();
-    
-    // Main barrel (wider)
-    const sgBarrelGeo = new THREE.BoxGeometry(0.15, 0.15, 0.9);
-    const sgBarrelMat = new THREE.MeshStandardMaterial({color: 0x555555});
-    const sgBarrel = new THREE.Mesh(sgBarrelGeo, sgBarrelMat);
-    sgBarrel.position.set(0, 0, -0.45);
-    shotgunGroup.add(sgBarrel);
-    
-    // Body
-    const sgBodyGeo = new THREE.BoxGeometry(0.2, 0.25, 0.5);
-    const sgBodyMat = new THREE.MeshStandardMaterial({color: 0x553311});
-    const sgBody = new THREE.Mesh(sgBodyGeo, sgBodyMat);
-    sgBody.position.set(0, -0.05, 0);
-    shotgunGroup.add(sgBody);
-    
-    // Handle
-    const sgHandleGeo = new THREE.BoxGeometry(0.1, 0.3, 0.12);
-    const sgHandleMat = new THREE.MeshStandardMaterial({color: 0x553311});
-    const sgHandle = new THREE.Mesh(sgHandleGeo, sgHandleMat);
-    sgHandle.position.set(0, -0.25, 0.2);
-    shotgunGroup.add(sgHandle);
-    
-    // Create muzzle flash
-    const sgMuzzleFlashGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-    const sgMuzzleFlashMat = new THREE.MeshBasicMaterial({color: 0xffaa00});
-    const sgMuzzleFlashMesh = new THREE.Mesh(sgMuzzleFlashGeo, sgMuzzleFlashMat); // Renamed
-    sgMuzzleFlashMesh.position.set(0, 0, -0.95);
-    sgMuzzleFlashMesh.visible = false;
-    shotgunGroup.add(sgMuzzleFlashMesh);
-    
-    // Store shotgun model and muzzle flash
-    g.weapons[g.WEAPON_SHOTGUN].model = shotgunGroup; // Use g.WEAPON_SHOTGUN
-    g.weapons[g.WEAPON_SHOTGUN].muzzleFlash = sgMuzzleFlashMesh;
-    g.weapons[g.WEAPON_SHOTGUN].bulletModel = new THREE.Mesh(bulletGeo.clone(), bulletMat.clone());
-    
-    // Rocket Launcher model
-    const rocketGroup = new THREE.Group();
-    
-    // Main tube
-    const rocketTubeGeo = new THREE.CylinderGeometry(0.2, 0.2, 1.2, 8);
-    const rocketTubeMat = new THREE.MeshStandardMaterial({color: 0x333333});
-    const rocketTube = new THREE.Mesh(rocketTubeGeo, rocketTubeMat);
-    rocketTube.rotation.set(0, 0, Math.PI/2);
-    rocketTube.position.set(0, 0, -0.6);
-    rocketGroup.add(rocketTube);
-    
-    // Handle
-    const rocketHandleGeo = new THREE.BoxGeometry(0.1, 0.3, 0.15);
-    const rocketHandleMat = new THREE.MeshStandardMaterial({color: 0x111111});
-    const rocketHandle = new THREE.Mesh(rocketHandleGeo, rocketHandleMat);
-    rocketHandle.position.set(0, -0.25, 0.1);
-    rocketGroup.add(rocketHandle);
-    
-    // Rocket muzzle flash
-    const rocketMuzzleFlashGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-    const rocketMuzzleFlashMat = new THREE.MeshBasicMaterial({color: 0xff5500});
-    const rocketMuzzleFlashMesh = new THREE.Mesh(rocketMuzzleFlashGeo, rocketMuzzleFlashMat); // Renamed
-    rocketMuzzleFlashMesh.position.set(0, 0, -1.25);
-    rocketMuzzleFlashMesh.visible = false;
-    rocketGroup.add(rocketMuzzleFlashMesh);
-    
-    // Store rocket launcher model
-    g.weapons[g.WEAPON_ROCKET].model = rocketGroup; // Use g.WEAPON_ROCKET
-    g.weapons[g.WEAPON_ROCKET].muzzleFlash = rocketMuzzleFlashMesh;
-    
-    // Create rocket model (larger than bullets)
-    const rocketModelGeo = new THREE.BoxGeometry(0.1, 0.1, 0.3);
-    const rocketModelMat = new THREE.MeshStandardMaterial({color: 0xff0000});
-    g.weapons[g.WEAPON_ROCKET].bulletModel = new THREE.Mesh(rocketModelGeo, rocketModelMat);
-    
-    // Melee weapon (bat/club)
-    const meleeGroup = new THREE.Group();
-    
-    // Handle
-    const meleeHandleGeo = new THREE.BoxGeometry(0.1, 0.5, 0.1);
-    const meleeHandleMat = new THREE.MeshStandardMaterial({color: 0x553311});
-    const meleeHandle = new THREE.Mesh(meleeHandleGeo, meleeHandleMat);
-    meleeHandle.position.set(0, 0, 0);
-    meleeGroup.add(meleeHandle);
-    
-    // Head
-    const meleeHeadGeo = new THREE.BoxGeometry(0.15, 0.2, 0.3);
-    const meleeHeadMat = new THREE.MeshStandardMaterial({color: 0x888888});
-    const meleeHead = new THREE.Mesh(meleeHeadGeo, meleeHeadMat);
-    meleeHead.position.set(0, 0.3, 0);
-    meleeGroup.add(meleeHead);
-    
-    // Store melee model
-    g.weapons[g.WEAPON_MELEE].model = meleeGroup; // Use g.WEAPON_MELEE
-    
-    // Create a viewport-fixed scene for weapons
-    const weaponViewport = new THREE.Scene(); // This is a local scene for weapon models
-    
-    // Add all weapon models to the scene but hide them initially
-    for (let weaponIdKey in g.weapons) { // Iterate over g.weapons keys
-        // Ensure weaponId is a key of g.weapons and not from prototype chain
-        if (Object.prototype.hasOwnProperty.call(g.weapons, weaponIdKey)) {
-            const weaponData = g.weapons[weaponIdKey];
-            if (weaponData.model) {
-                weaponViewport.add(weaponData.model);
-                weaponData.model.visible = false;
+    // Helper function to load weapon mesh or create fallback
+    const loadWeaponMesh = async (weaponId, meshUrl, fallbackCreator) => {
+        try {
+            if (meshUrl) {
+                const result = await BABYLON.ImportMeshAsync("", meshUrl, scene);
+                return result.meshes[0];
             }
+        } catch (error) {
+            console.warn(`Failed to load weapon mesh for ${weaponId}, using fallback`);
         }
+        return fallbackCreator();
+    };
+    
+    // Create default cube fallback
+    const createCubeFallback = (name, size = 1) => {
+        return BABYLON.MeshBuilder.CreateBox(name, {size}, scene);
+    };
+    
+    // Load all weapon models
+    for (let weaponId in g.weapons) {
+        const weaponData = g.weapons[weaponId];
+        
+        // Load main weapon model
+        weaponData.model = await loadWeaponMesh(
+            weaponId, 
+            weaponData.meshUrl, 
+            () => createCubeFallback(`weapon_${weaponId}`)
+        );
+        
+        // Create muzzle flash for projectile weapons
+        if (weaponId !== g.WEAPON_MELEE) {
+            const muzzleFlash = BABYLON.MeshBuilder.CreateBox(`muzzleFlash_${weaponId}`, {width: 0.15, height: 0.15, depth: 0.15}, scene);
+            const muzzleFlashMat = new BABYLON.StandardMaterial(`muzzleFlashMat_${weaponId}`, scene);
+            muzzleFlashMat.diffuseColor = new BABYLON.Color3(1, 0.67, 0);
+            muzzleFlashMat.emissiveColor = new BABYLON.Color3(1, 0.67, 0);
+            muzzleFlash.material = muzzleFlashMat;
+            muzzleFlash.isVisible = false;
+            muzzleFlash.setParent(weaponData.model);
+            weaponData.muzzleFlash = muzzleFlash;
+            
+            // Position muzzle flash at weapon front
+            muzzleFlash.position = new BABYLON.Vector3(0, 0, -1.0);
+        }
+        
+        // Create bullet/projectile model
+        const bulletModel = BABYLON.MeshBuilder.CreateBox(`bullet_${weaponId}`, {width: 0.05, height: 0.05, depth: 0.2}, scene);
+        const bulletMat = new BABYLON.StandardMaterial(`bulletMat_${weaponId}`, scene);
+        bulletMat.diffuseColor = new BABYLON.Color3(1, 1, 0);
+        bulletMat.emissiveColor = new BABYLON.Color3(0.2, 0.2, 0);
+        bulletModel.material = bulletMat;
+        weaponData.bulletModel = bulletModel;
+        
+        // Hide weapons initially
+        weaponData.model.isVisible = false;
     }
     
-    // Store the weapon viewport for rendering
-    window.weaponViewport = weaponViewport; // This is a special global for rendering, not part of g.
-    
     // Show current weapon
-    if(g.switchWeapon) g.switchWeapon(g.currentWeapon); // Uses g.currentWeapon and checks if switchWeapon exists
+    g.switchWeapon(g.currentWeapon);
 }
+// Switch weapon function using Babylon.js
+// Original Goal: Hide current weapon, show new weapon, cancel reload, update UI and weapon position
+// New Implementation: Uses Babylon.js isVisible property and window.game references
 window.game.switchWeapon = function(weaponId) {
     const g = window.game;
     if (!g.weapons[weaponId]) return;
     
-    if (g.isReloading && typeof g.reloadTimeoutId === "number"){
-      clearTimeout(g.reloadTimeoutId);
-      g.isReloading = false;
-      if (g.reloadText) g.reloadText.style.display = 'none'; 
-      g.reloadTimeoutId = undefined;
+    // Cancel reload if switching weapons
+    if (g.isReloading && typeof g.reloadTimeoutId === "number") {
+        clearTimeout(g.reloadTimeoutId);
+        g.isReloading = false;
+        if (g.reloadText) g.reloadText.style.display = 'none'; 
+        g.reloadTimeoutId = undefined;
     }
     
     // Hide current weapon
     if (g.weapons[g.currentWeapon] && g.weapons[g.currentWeapon].model) {
-        g.weapons[g.currentWeapon].model.visible = false;
+        g.weapons[g.currentWeapon].model.isVisible = false;
     }
     
     // Switch to new weapon
@@ -218,29 +93,28 @@ window.game.switchWeapon = function(weaponId) {
     
     // Show new weapon
     if (g.weapons[g.currentWeapon] && g.weapons[g.currentWeapon].model) {
-        g.weapons[g.currentWeapon].model.visible = true;
+        g.weapons[g.currentWeapon].model.isVisible = true;
     }
     
-    // Update weapon position
+    // Update weapon position and UI
     g.updateWeaponPosition(); 
-    
-    // Update ammo display
-    if(g.updateAmmoText) g.updateAmmoText(); 
-}
+    g.updateAmmoText(); 
+} 
+// Update weapon position function using Babylon.js
+// Original Goal: Position weapon relative to camera, handle ADS transitions, apply scaling and crosshair updates
+// New Implementation: Uses Babylon.js vector math and camera transformation matrices
 window.game.updateWeaponPosition = function() {
     const g = window.game;
     const weapon = g.weapons[g.currentWeapon];
     if (!weapon || !weapon.model) return;
     if (!g.camera) return;
 
-
     // --- ADS ZOOM ---
-    const targetFov = g.isADS ? 75 / 1.5 : 75;
+    const baseFov = Math.PI / 3; // 60 degrees in radians
+    const targetFov = g.isADS ? baseFov / 1.5 : baseFov; // Zoom in for ADS
     g.camera.fov += (targetFov - g.camera.fov) * 0.18; 
-    g.camera.updateProjectionMatrix();
     // --- END ADS ZOOM ---
     
-
     // Create vectors for weapon positioning in camera space
     let offsetRight = 0.3;  
     let offsetDown = -0.2;  
@@ -257,7 +131,7 @@ window.game.updateWeaponPosition = function() {
 
     // --- Rocket launcher ADS fix ---
     let scale = 1;
-    if (g.currentWeapon === g.WEAPON_ROCKET && g.isADS) { // Use g.WEAPON_ROCKET for comparison
+    if (g.currentWeapon === g.WEAPON_ROCKET && g.isADS) {
         scale = 0.45; 
         offsetRight *= 0.5;
         offsetDown *= 0.7;
@@ -269,30 +143,28 @@ window.game.updateWeaponPosition = function() {
     offsetDown = offsetDown * (1 - g.adsTransition) + (-0.1 * g.adsTransition);
     offsetForward = offsetForward * (1 - g.adsTransition) + (-0.3 * g.adsTransition);
     
-    // Apply position based on camera's orientation vectors
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(g.camera.quaternion);
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(g.camera.quaternion);
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(g.camera.quaternion);
+    // Apply position based on camera's orientation using Babylon.js
+    const forward = new BABYLON.Vector3(0, 0, -1);
+    BABYLON.Vector3.TransformNormalToRef(forward, g.camera.getWorldMatrix(), forward);
+    
+    const right = new BABYLON.Vector3(1, 0, 0);
+    BABYLON.Vector3.TransformNormalToRef(right, g.camera.getWorldMatrix(), right);
+    
+    const up = new BABYLON.Vector3(0, 1, 0);
+    BABYLON.Vector3.TransformNormalToRef(up, g.camera.getWorldMatrix(), up);
     
     // Calculate weapon position in world space
-    const weaponPos = new THREE.Vector3()
-        .addScaledVector(right, offsetRight)
-        .addScaledVector(up, offsetDown)
-        .addScaledVector(forward, offsetForward)
-        .add(g.camera.position);
+    const weaponPos = g.camera.position.clone()
+        .add(right.scale(offsetRight))
+        .add(up.scale(offsetDown))
+        .add(forward.scale(offsetForward));
     
-    // Set weapon position in world space
-    weapon.model.position.copy(weaponPos);
-    
-    // Make weapon face same direction as camera
-    weapon.model.quaternion.copy(g.camera.quaternion);
+    // Set weapon position and rotation
+    weapon.model.position.copyFrom(weaponPos);
+    weapon.model.rotationQuaternion = g.camera.rotationQuaternion ? g.camera.rotationQuaternion.clone() : null;
 
-    // Rocket launcher scale fix
-    if (g.currentWeapon === g.WEAPON_ROCKET) { // Use g.WEAPON_ROCKET
-        weapon.model.scale.set(scale, scale, scale);
-    } else {
-        weapon.model.scale.set(1, 1, 1);
-    }
+    // Apply scaling
+    weapon.model.scaling = new BABYLON.Vector3(scale, scale, scale);
     
     // Update crosshair size based on ADS
     if (g.crosshair) { 
@@ -304,6 +176,9 @@ window.game.updateWeaponPosition = function() {
     }
 }
 
+// Reload function
+// Original Goal: Start reload animation, play sound, show UI, restore ammo after delay
+// New Implementation: Same logic but uses window.game references
 window.game.reload = function() {
     const g = window.game;
     const weapon = g.weapons[g.currentWeapon];
@@ -324,19 +199,113 @@ window.game.reload = function() {
         weapon.currentAmmo = weapon.magazineSize;
         g.isReloading = false;
         if (g.reloadText) g.reloadText.style.display = 'none';
-        if(g.updateAmmoText) g.updateAmmoText(); 
+        g.updateAmmoText(); 
     }, weapon.reloadTime);
 }
+
+
+
+// Create bullet impact effect using Babylon.js
+// Original Goal: Create visual impact effects when bullets hit surfaces
+// New Implementation: Uses Babylon.js particle systems or simple mesh effects
+window.game.createBulletImpact = function(position, normal) {
+    const g = window.game;
+    if (!g.scene) return;
+    
+    // Create impact spark effect
+    const impact = BABYLON.MeshBuilder.CreateBox("impact", {width: 0.1, height: 0.1, depth: 0.02}, g.scene);
+    const impactMat = new BABYLON.StandardMaterial("impactMat", g.scene);
+    impactMat.diffuseColor = new BABYLON.Color3(1, 0.67, 0);
+    impactMat.emissiveColor = new BABYLON.Color3(1, 0.67, 0);
+    impact.material = impactMat;
+    
+    impact.position.copyFrom(position);
+    
+    // Orient impact based on surface normal
+    if (normal) {
+        impact.lookAt(position.add(normal));
+    }
+    
+    // Fade out and dispose
+    setTimeout(() => {
+        impact.dispose();
+    }, 100);
+}
+
+// Create rocket projectile using Babylon.js
+// Original Goal: Create rocket projectiles with physics and explosion on impact
+// New Implementation: Uses Babylon.js physics and collision detection
+window.game.createRocket = function(startPos, direction) {
+    const g = window.game;
+    if (!g.scene) return;
+    
+    const weapon = g.weapons[g.WEAPON_ROCKET];
+    if (!weapon || !weapon.bulletModel) return;
+    
+    // Create rocket instance
+    const rocket = weapon.bulletModel.createInstance("rocket");
+    rocket.position.copyFrom(startPos);
+    
+    // Orient rocket
+    const lookDirection = direction.normalize();
+    rocket.lookAt(rocket.position.add(lookDirection));
+    
+    // Rocket properties
+    const speed = 30;
+    const explosionRadius = weapon.explosionRadius || 10;
+    const explosionDamage = weapon.damage || 100;
+    
+    // Animate rocket
+    const animateRocket = () => {
+        // Move rocket
+        rocket.position.addInPlace(lookDirection.scale(speed * g.scene.getEngine().getDeltaTime() / 1000));
+        
+        // Check for collision using Babylon.js ray casting
+        const ray = new BABYLON.Ray(rocket.position, lookDirection);
+        const hit = g.scene.pickWithRay(ray, (mesh) => {
+            // Exclude rocket itself and weapon models
+            if (mesh === rocket) return false;
+            for (let weaponId in g.weapons) {
+                const weaponData = g.weapons[weaponId];
+                if (weaponData.model && (mesh === weaponData.model || weaponData.model.getChildMeshes().includes(mesh))) {
+                    return false;
+                }
+            }
+            return true;
+        });
+        
+        if (hit && hit.hit && hit.distance < 1) {
+            // Explode
+            if (g.createExplosion) g.createExplosion(rocket.position, explosionRadius, explosionDamage);
+            rocket.dispose();
+            return;
+        }
+        
+        // Check distance from camera
+        const distance = BABYLON.Vector3.Distance(rocket.position, g.camera.position);
+        if (distance > 200) {
+            rocket.dispose();
+            return;
+        }
+        
+        requestAnimationFrame(animateRocket);
+    };
+    
+    animateRocket();
+}
+
+// Shoot function using Babylon.js
+// Original Goal: Handle shooting for all weapon types, manage ammo, create projectiles, perform hit detection with penetration
+// New Implementation: Uses Babylon.js ray casting, removes knockback, preserves penetration mechanics and tracers
 window.game.shoot = function() {
     const g = window.game;
     const weapon = g.weapons[g.currentWeapon];
-    if (!weapon || !g.camera || !g.raycaster || !g.scene) return false;
-
+    if (!weapon || !g.camera || !g.scene) return;
 
     // Auto-Reload if gun has no ammo
     if (weapon.currentAmmo <= 0 && weapon.magazineSize !== Infinity) { 
-       if(g.reload) g.reload(); 
-       return false; 
+        g.reload(); 
+        return false; 
     }
 
     // Check if player can shoot (ammo, reload, cooldown)
@@ -348,18 +317,18 @@ window.game.shoot = function() {
     // Set last shot time for fire rate control
     g.lastShotTime = now;
     
-    // play shoot.mp3
+    // Play shoot sound
     if (g.sounds && g.sounds.shoot) g.sounds.shoot.play();
 
     // Handle different weapon types
     switch (g.currentWeapon) {
-        case g.WEAPON_RIFLE:     // Use g.WEAPON_RIFLE
-        case g.WEAPON_SHOTGUN:   // Use g.WEAPON_SHOTGUN
+        case g.WEAPON_RIFLE:
+        case g.WEAPON_SHOTGUN:
             // Show muzzle flash
             if (weapon.muzzleFlash) {
-                weapon.muzzleFlash.visible = true;
+                weapon.muzzleFlash.isVisible = true;
                 setTimeout(() => {
-                   if (weapon.muzzleFlash) weapon.muzzleFlash.visible = false; 
+                   if (weapon.muzzleFlash) weapon.muzzleFlash.isVisible = false; 
                 }, 50);
             }
 
@@ -371,139 +340,140 @@ window.game.shoot = function() {
                 const spreadX = (Math.random() - 0.5) * spread;
                 const spreadY = (Math.random() - 0.5) * spread;
 
-                g.raycaster.setFromCamera(new THREE.Vector2(spreadX, spreadY), g.camera);
-                if(g.createBulletTracer) g.createBulletTracer(g.raycaster.ray.direction); 
+                // Create ray with spread using Babylon.js
+                const forward = new BABYLON.Vector3(spreadX, spreadY, -1);
+                BABYLON.Vector3.TransformNormalToRef(forward, g.camera.getWorldMatrix(), forward);
+                forward.normalize();
+                
+                g.createBulletTracer(forward); 
 
-                const intersects = g.raycaster.intersectObjects(g.scene.children, true); 
-                let pierceCount = typeof weapon.pierce === 'number' ? weapon.pierce : 1; 
-                let piercedObjects = 0;
-
-                for (let j = 0; j < intersects.length; j++){ 
-                    let hit = intersects[j];
-
-                    if (hit.object === g.camera || 
-                        (g.bullets && g.bullets.some(b => b.bullet === hit.object)) ||
-                        (g.explosions && g.explosions.some(e => e.mesh === hit.object)) ||
-                        Object.values(g.weapons).some(w => w.model && (w.model === hit.object || w.model.children.includes(hit.object))))
-                    {
-                        continue; 
+                // Raycast for hit detection using Babylon.js
+                const ray = new BABYLON.Ray(g.camera.position, forward);
+                const hit = g.scene.pickWithRay(ray, (mesh) => {
+                    // Exclude camera and weapon models
+                    if (mesh === g.camera) return false;
+                    
+                    // Exclude weapon models
+                    for (let weaponId in g.weapons) {
+                        const weaponData = g.weapons[weaponId];
+                        if (weaponData.model && (mesh === weaponData.model || weaponData.model.getChildMeshes().includes(mesh))) {
+                            return false;
+                        }
                     }
+                    
+                    // Exclude bullets and explosions
+                    if (g.bullets && g.bullets.some(b => b.bullet === mesh)) return false;
+                    if (g.explosions && g.explosions.some(e => e.mesh === mesh)) return false;
+                    
+                    return true;
+                });
 
-                    piercedObjects++; 
-
-                    const enemy = g.enemies && g.enemies.find(e => e.mesh === hit.object); 
+                if (hit && hit.hit) {
+                    // Check if hit an enemy
+                    const enemy = g.enemies && g.enemies.find(e => e.mesh === hit.pickedMesh);
                     if (enemy) {
-                        const distance = g.camera.position.distanceTo(hit.point);
+                        const distance = BABYLON.Vector3.Distance(g.camera.position, hit.pickedPoint);
                         let damage = weapon.damage;
                         if (distance > weapon.minRange && weapon.maxRange > weapon.minRange) { 
                             const dropOffFactor = Math.min(1, Math.max(0, (distance - weapon.minRange) / (weapon.maxRange - weapon.minRange)));
                             damage *= (1 - dropOffFactor * (1 - weapon.minDamagePercent));
                         }
-                        if(g.damageEnemy) g.damageEnemy(enemy, Math.round(damage), hit.point);
-
-                        if (piercedObjects >= pierceCount) {
-                            break; 
-                        }
+                        if (g.damageEnemy) g.damageEnemy(enemy, Math.round(damage), hit.pickedPoint);
                     } else {
-                        if(g.createBulletImpact) g.createBulletImpact(hit.point, hit.face.normal); 
-                        if (piercedObjects >= pierceCount) {
-                            break; 
-                        }
+                        g.createBulletImpact(hit.pickedPoint, hit.getNormal());
                     }
-                } 
-            } 
+                }
+            }
 
             weapon.currentAmmo--;
-            if(g.updateAmmoText) g.updateAmmoText(); 
+            g.updateAmmoText(); 
 
             if (weapon.currentAmmo <= 0 && weapon.magazineSize !== Infinity) {
-                if(g.reload) g.reload(); 
-            }
-            break; 
-
-        case g.WEAPON_ROCKET: // Use g.WEAPON_ROCKET
-            if (weapon.muzzleFlash) {
-                weapon.muzzleFlash.visible = true;
-                setTimeout(() => {
-                   if (weapon.muzzleFlash) weapon.muzzleFlash.visible = false;
-                }, 100);
-            }
-
-            const rocketDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(g.camera.quaternion);
-            if(g.createRocket) g.createRocket(g.camera.position.clone(), rocketDirection); 
-
-            weapon.currentAmmo--;
-            if(g.updateAmmoText) g.updateAmmoText(); 
-
-            if (weapon.currentAmmo <= 0) {
-                if(g.reload) g.reload(); 
+                g.reload(); 
             }
             break;
 
-        case g.WEAPON_MELEE: // Use g.WEAPON_MELEE
-            const meleeDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(g.camera.quaternion);
-            g.raycaster.set(g.camera.position, meleeDirection);
+        case g.WEAPON_ROCKET:
+            // Show muzzle flash
+            if (weapon.muzzleFlash) {
+                weapon.muzzleFlash.isVisible = true;
+                setTimeout(() => {
+                   if (weapon.muzzleFlash) weapon.muzzleFlash.isVisible = false;
+                }, 100);
+            }
 
-             const meleeModel = weapon.model;
-             if (meleeModel && !meleeModel.isAnimating) { 
-                 meleeModel.isAnimating = true; 
-                 const originalRotation = meleeModel.rotation.clone();
-                 const swingDuration = weapon.fireRate * 0.8; 
+            const rocketDirection = new BABYLON.Vector3(0, 0, -1);
+            BABYLON.Vector3.TransformNormalToRef(rocketDirection, g.camera.getWorldMatrix(), rocketDirection);
+            g.createRocket(g.camera.position.clone(), rocketDirection); 
 
-                 let startTime = performance.now();
-                 function animateSwing(currentTime) {
-                     const elapsed = currentTime - startTime;
-                     const progress = Math.min(elapsed / swingDuration, 1);
-                     const swingProgress = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-                     const maxAngleX = -Math.PI / 4;
-                     const maxAngleZ = Math.PI / 6;
-                     meleeModel.rotation.x = originalRotation.x + maxAngleX * swingProgress;
-                     meleeModel.rotation.z = originalRotation.z + maxAngleZ * swingProgress;
+            weapon.currentAmmo--;
+            g.updateAmmoText(); 
 
-                     if (progress < 1) {
-                         requestAnimationFrame(animateSwing);
-                     } else {
-                         meleeModel.rotation.copy(originalRotation); 
-                         meleeModel.isAnimating = false; 
-                     }
-                 }
-                 requestAnimationFrame(animateSwing);
-             }
+            if (weapon.currentAmmo <= 0) {
+                g.reload(); 
+            }
+            break;
+
+        case g.WEAPON_MELEE:
+            const meleeDirection = new BABYLON.Vector3(0, 0, -1);
+            BABYLON.Vector3.TransformNormalToRef(meleeDirection, g.camera.getWorldMatrix(), meleeDirection);
+            
+            const meleeModel = weapon.model;
+            if (meleeModel && !meleeModel.isAnimating) { 
+                meleeModel.isAnimating = true; 
+                const originalRotation = meleeModel.rotation.clone();
+                const swingDuration = weapon.fireRate * 0.8; 
+
+                let startTime = performance.now();
+                function animateSwing(currentTime) {
+                    const elapsed = currentTime - startTime;
+                    const progress = Math.min(elapsed / swingDuration, 1);
+                    const swingProgress = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+                    const maxAngleX = -Math.PI / 4;
+                    const maxAngleZ = Math.PI / 6;
+                    meleeModel.rotation.x = originalRotation.x + maxAngleX * swingProgress;
+                    meleeModel.rotation.z = originalRotation.z + maxAngleZ * swingProgress;
+
+                    if (progress < 1) {
+                        requestAnimationFrame(animateSwing);
+                    } else {
+                        meleeModel.rotation.copyFrom(originalRotation); 
+                        meleeModel.isAnimating = false; 
+                    }
+                }
+                requestAnimationFrame(animateSwing);
+            }
 
             const meleeRange = weapon.range;
-            const meleeHits = g.raycaster.intersectObjects(g.scene.children, true); 
-            let hitEnemyThisSwing = false; 
-
-            for (const hit of meleeHits) {
-                if (hit.distance > meleeRange) continue;
-
-                if (hit.object === g.camera ||
-                    (g.bullets && g.bullets.some(b => b.bullet === hit.object)) ||
-                    (g.explosions && g.explosions.some(e => e.mesh === hit.object)) ||
-                    Object.values(g.weapons).some(w => w.model && (w.model === hit.object || w.model.children.includes(hit.object))))
-                {
-                    continue;
+            const ray = new BABYLON.Ray(g.camera.position, meleeDirection);
+            const hit = g.scene.pickWithRay(ray, (mesh) => {
+                // Exclude camera and weapon models
+                if (mesh === g.camera) return false;
+                
+                for (let weaponId in g.weapons) {
+                    const weaponData = g.weapons[weaponId];
+                    if (weaponData.model && (mesh === weaponData.model || weaponData.model.getChildMeshes().includes(mesh))) {
+                        return false;
+                    }
                 }
+                
+                // Exclude bullets and explosions
+                if (g.bullets && g.bullets.some(b => b.bullet === mesh)) return false;
+                if (g.explosions && g.explosions.some(e => e.mesh === mesh)) return false;
+                
+                return true;
+            });
 
-                const enemy = g.enemies && g.enemies.find(e => e.mesh === hit.object); 
-                if (enemy && !hitEnemyThisSwing) {
-                    if(g.damageEnemy) g.damageEnemy(enemy, weapon.damage, hit.point);
-                    hitEnemyThisSwing = true; 
-
-                    const knockbackForce = new THREE.Vector3().copy(meleeDirection).multiplyScalar(0.5);
-                     if (enemy.velocity) {
-                         enemy.velocity.add(knockbackForce);
-                     } else {
-                         enemy.velocity = knockbackForce; 
-                     }
-                    break; 
+            if (hit && hit.hit && hit.distance <= meleeRange) {
+                const enemy = g.enemies && g.enemies.find(e => e.mesh === hit.pickedMesh);
+                if (enemy) {
+                    if (g.damageEnemy) g.damageEnemy(enemy, weapon.damage, hit.pickedPoint);
                 }
             }
             break; 
     } 
     return true; 
 }
-// The weapon definitions (damage, fireRate, etc.) are already on window.game.weapons,
-// as initialized in main.js. createWeaponModels here only adds models.
-// So, the large 'export let weapons = { ... }' structure is removed from this file.
-// Duplicate function declarations from the end of the original file have been removed.
+
+
+

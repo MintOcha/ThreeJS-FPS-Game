@@ -52,7 +52,7 @@ window.game.updateHealthBar = function() {
 
 window.game.updateAmmoText = function() {
     const g = window.game;
-    if (!g.ammoText || !g.weapons || typeof g.currentWeapon === 'undefined') return; // Ensure elements & game state ready
+    if (!g.ammoText || !g.weapons || typeof g.currentWeapon === 'undefined') return;
 
     const weapon = g.weapons[g.currentWeapon];
     if (!weapon) return;
@@ -62,10 +62,42 @@ window.game.updateAmmoText = function() {
     } else {
         g.ammoText.textContent = `${weapon.currentAmmo} / ${weapon.magazineSize}`;
     }
-}
+};
 
-// Stubs for updateEnemyHealthBar and showDamageNumber are removed.
-// Their definitive versions are in effects.js and should be called via window.game.
+window.game.updateWaveText = function() {
+    const g = window.game;
+    if (!g.waveText) return;
+    g.waveText.textContent = `Wave: ${g.currentWave}`;
+};
 
-// The comment "...Paste the full function bodies from sketch.js into the stubs above..."
-// is outdated. The core UI functions (setupUI, updateHealthBar, updateAmmoText) are complete.
+window.game.updateWaveStatusText = function(text) {
+    const g = window.game;
+    if (!g.waveStatusText) return;
+    g.waveStatusText.textContent = text;
+};
+
+window.game.showReloadText = function() {
+    const g = window.game;
+    if (!g.reloadText) return;
+    g.reloadText.style.display = 'block';
+};
+
+window.game.hideReloadText = function() {
+    const g = window.game;
+    if (!g.reloadText) return;
+    g.reloadText.style.display = 'none';
+};
+
+window.game.showGameOver = function() {
+    const g = window.game;
+    if (!g.gameOverScreen) return;
+    g.gameOverScreen.style.display = 'flex';
+    // Release pointer lock
+    document.exitPointerLock();
+};
+
+window.game.hideGameOver = function() {
+    const g = window.game;
+    if (!g.gameOverScreen) return;
+    g.gameOverScreen.style.display = 'none';
+};

@@ -5,8 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Enhanced FPS Game</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; color: white; }
-        canvas { display: block; }
+        html, body { 
+            margin: 0; 
+            padding: 0; 
+            width: 100%; 
+            height: 100%; 
+            overflow: hidden; 
+            background-color: #000; 
+            color: white; 
+        }
+        #game-canvas { 
+            display: block; 
+            width: 100vw; 
+            height: 100vh; 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            z-index: 1; 
+            outline: none;
+            touch-action: none;
+        }
 
         /* --- Home Screen --- */
         #home-screen {
@@ -113,6 +131,9 @@
     </style>
 </head>
 <body>
+    <!-- Game Canvas -->
+    <canvas id="game-canvas"></canvas>
+    
     <!-- Home Screen -->
     <div id="home-screen">
         <h1>Block Ops</h1>
@@ -144,36 +165,24 @@
     <div id="enemy-health-bar-container"></div>
     <div id="damage-number-container"></div>
   
-    <!-- Load Howler.js for sound -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.4/howler.min.js"></script>
+    <!-- Load Babylon.js -->
+    <script src="https://cdn.babylonjs.com/havok/HavokPhysics_umd.js"></script>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+    <!-- Fallback physics engine -->
+    <script src="https://cdn.babylonjs.com/cannon.min.js"></script>
 
-    <!-- Import three.js -->
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-                "world": "./world.js",
-                "player": "./player.js",
-                "ui": "./ui.js",
-                "weapons": "./weapons.js",
-                "enemies": "./enemies.js",
-                "effects": "./effects.js",
-                "utils": "./utils.js"
-            }
-        }
-    </script>
-
-    <!-- Load our game module -->
-
-  <script type="module" src="main.js"></script>
-  <script type="module" src="world.js"></script>
-  <script type="module" src="weapons.js"></script>
-  <script type="module" src="player.js"></script>
-  <script type="module" src="enemies.js"></script>
-  <script type="module" src="effects.js"></script>
-  <script type="module" src="utils.js"></script>
-  <script type="module" src="ui.js"></script>
+    <!-- Load our game modules -->
+    <script src="main.js"></script>
+    <script src="world.js"></script>
+    <script src="weapons.js"></script>
+    <script src="player.js"></script>
+    <script src="enemies.js"></script>
+    <script src="effects.js"></script>
+    <script src="utils.js"></script>
+    <script src="ui.js"></script>
 
 </body>
 </html>

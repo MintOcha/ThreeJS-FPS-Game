@@ -1,46 +1,377 @@
-// Player module for movement, controls, health, and player state
-import * as THREE from 'three';
-// Imports for updateHealthBar, updateAmmoText, getQuaternionRoll are removed,
-// as these functions are now expected to be on window.game.
+// Player module with modern Babylon.js character controller and collision system
 
-// Using the global game object for scene and camera instead of imports
+/**
+ * Original Goals:
+ * 1. Create a first-person character controller with physics
+ * 2. Handle movement (WASD), jumping, sprinting, sliding
+ * 3. Implement proper collision detection with world geometry
+ * 4. Handle pointer lock and mouse look controls
+ * 5. Manage player health, damage, and regeneration
+ * 6. Integrate with weapon system and UI
+ * 
+ * Structural Simplification:
+ * 1. Use Babylon.js PhysicsCharacterController for movement physics
+ * 2. Use modern collision callbacks for damage and interactions
+ * 3. Separate input handling from physics updates
+ * 4. Use proper camera follow system for FPS view
+ * 5. Leverage Babylon.js observables for event handling
+ */
 
-// All player-related functions use the global game object
+// Create player with modern Babylon.js character controller
 window.game.createPlayer = function() {
     const g = window.game;
-    // Player is just a camera with collision detection
-    g.player = g.camera; // g.camera should already be initialized in main.js
     
-    // Initialize player movement variables
-    g.playerVelocity = new THREE.Vector3(0, 0, 0);
-    g.playerDirection = new THREE.Vector3(0, 0, 0);
+    // Character controller setup
+    const characterHeight = 1.8;
+    const characterRadius = 0.4;
+    const characterPosition = new BABYLON.Vector3(0, 1.7, 0);
     
-    // Set up player controls (movement handled in keyDown/keyUp)
-    g.moveForward = false;
-    g.moveBackward = false;
-    g.moveLeft = false;
-    g.moveRight = false;
+    // Create character controller (modern Babylon.js approach)
+    try {
+        g.playerController = new BABYLON.PhysicsCharacterController(
+            characterPosition, 
+            {
+                capsuleHeight: characterHeight, 
+                capsuleRadius: characterRadius
+            }, 
+            g.scene
+        );
+        
+        // Create visual representation (invisible in FPS)
+        g.playerMesh = BABYLON.MeshBuilder.CreateCapsule("playerCapsule", {
+            height: characterHeight, 
+            radius: characterRadius
+        }, g.scene);
+        g.playerMesh.visibility = 0; // Invisible for FPS view
+        g.playerMesh.position.copyFrom(characterPosition);
+        
+        console.log("Using PhysicsCharacterController");
+        
+    } catch (e) {
+        console.log("PhysicsCharacterController not available, using PhysicsAggregate fallback");
+        
+        // Fallback to PhysicsAggregate system
+        g.playerMesh = BABYLON.MeshBuilder.CreateCapsule("playerCapsule", {
+            height: characterHeight, 
+            radius: characterRadius
+        }, g.scene);
+        g.playerMesh.visibility = 0;
+        g.playerMesh.position.copyFrom(characterPosition);
+        
+        // Create physics aggregate for collision
+        g.playerAggregate = new BABYLON.PhysicsAggregate(
+            g.playerMesh, 
+            BABYLON.PhysicsShapeType.CAPSULE, 
+            { mass: 1 }, 
+            g.scene
+        );
+        
+        // Lock rotation to prevent tipping
+        g.playerAggregate.body.setMassProperties({
+            mass: 1,
+            inertia: new BABYLON.Vector3(0, 0, 0)
+        });
+        
+        // Enable collision callbacks
+        g.playerAggregate.body.setCollisionCallbackEnabled(true);
+        
+        // Setup collision observer for damage
+        const collisionObservable = g.playerAggregate.body.getCollisionObservable();
+        collisionObservable.add((collisionEvent) => {
+            handlePlayerCollision(collisionEvent);
+        });
+    }
+    
+    // Setup camera to follow player
+    g.camera.position.copyFrom(characterPosition);
+    g.camera.position.y += 0.7; // Eye level offset
+    
+    // Initialize player state
+    g.player = g.playerMesh;
+    g.inputDirection = new BABYLON.Vector3(0, 0, 0);
+    g.characterOrientation = BABYLON.Quaternion.Identity();
+    
+    // Setup pointer lock controls
+    setupPointerControls();
+    
+    console.log("Player created successfully");
 };
 
-// Event handlers (onKeyDown, onKeyUp, etc.) will remain module-scoped 
-// and are added as event listeners in setupControls.
-// setupControls itself will be on window.game.
+// Setup modern pointer lock controls
+function setupPointerControls() {
+    const g = window.game;
+    
+    // Enable pointer lock on canvas click
+    g.canvas.addEventListener('click', () => {
+        if (g.gameActive && !g.isPaused) {
+            g.canvas.requestPointerLock();
+        }
+    });
+    
+    // Handle pointer lock state changes
+    document.addEventListener('pointerlockchange', () => {
+        if (document.pointerLockElement === g.canvas) {
+            console.log("Pointer locked");
+        } else {
+            console.log("Pointer unlocked");
+            if (g.gameActive && !g.isPaused) {
+                // Auto-pause when losing pointer lock during gameplay
+                if (g.pauseGame) g.pauseGame();
+            }
+        }
+    });
+    
+    // Handle mouse movement for camera rotation
+    g.canvas.addEventListener('mousemove', (event) => {
+        if (document.pointerLockElement === g.canvas && g.gameActive && !g.isPaused) {
+            const sensitivity = 0.001; // Reduced sensitivity
+            
+            // Horizontal rotation (Y-axis)
+            g.camera.rotation.y += event.movementX * sensitivity;
+            
+            // Vertical rotation (X-axis) with limits - invert Y movement
+            g.camera.rotation.x -= event.movementY * sensitivity; // Note the minus sign
+            g.camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, g.camera.rotation.x));
+            
+            // Update character orientation for movement direction
+            BABYLON.Quaternion.FromEulerAnglesToRef(0, g.camera.rotation.y, 0, g.characterOrientation);
+        }
+    });
+}
 
-const onKeyDown = function(event) { // Changed to non-exported function
+// Handle collision events
+function handlePlayerCollision(collisionEvent) {
+    const g = window.game;
+    const collidedWith = collisionEvent.collidedAgainst;
+    
+    // Check if collision is with enemy
+    if (collidedWith && collidedWith.name && collidedWith.name.startsWith("enemy")) {
+        // Take damage from enemy contact
+        if (g.damagePlayer) {
+            g.damagePlayer(10); // Base contact damage
+        }
+    }
+    
+    // Check for trigger volumes (health pickups, etc.)
+    if (collidedWith && collidedWith.metadata && collidedWith.metadata.isTrigger) {
+        handleTriggerInteraction(collidedWith);
+    }
+}
+
+// Handle trigger interactions
+function handleTriggerInteraction(triggerMesh) {
+    const g = window.game;
+    
+    if (triggerMesh.metadata.type === "healthPickup") {
+        g.playerHealth = Math.min(100, g.playerHealth + 25);
+        if (g.updateHealthBar) g.updateHealthBar();
+        triggerMesh.dispose(); // Remove pickup
+    }
+}
+
+// Modern physics-based character movement update
+window.game.updatePlayerPhysics = function() {
+    const g = window.game;
+    if (!g.scene || g.scene.deltaTime === undefined) return;
+    
+    const dt = g.scene.deltaTime / 1000.0;
+    if (dt === 0) return;
+    
+    // Update input direction based on movement keys
+    updateInputDirection();
+    
+    // Use character controller if available
+    if (g.playerController) {
+        updateWithCharacterController(dt);
+    } else if (g.playerAggregate) {
+        updateWithPhysicsAggregate(dt);
+    }
+    
+    // Update camera to follow player
+    updateCameraFollow();
+};
+
+// Update input direction from movement keys
+function updateInputDirection() {
+    const g = window.game;
+    
+    g.inputDirection.setAll(0);
+    
+    if (g.moveForward) g.inputDirection.z = 1;
+    if (g.moveBackward) g.inputDirection.z = -1;
+    if (g.moveLeft) g.inputDirection.x = -1;
+    if (g.moveRight) g.inputDirection.x = 1;
+    
+    // Normalize for diagonal movement
+    if (g.inputDirection.length() > 0) {
+        g.inputDirection.normalize();
+    }
+}
+
+// Update using PhysicsCharacterController
+function updateWithCharacterController(dt) {
+    const g = window.game;
+    
+    // Character controller state management
+    const down = new BABYLON.Vector3(0, -1, 0);
+    const support = g.playerController.checkSupport(dt, down);
+    
+    // Determine character state
+    const nextState = getNextCharacterState(support);
+    if (nextState !== g.characterState) {
+        g.characterState = nextState;
+    }
+    
+    // Calculate desired velocity based on state
+    const currentVelocity = g.playerController.getVelocity();
+    const desiredVelocity = getDesiredVelocity(dt, support, currentVelocity);
+    
+    // Apply velocity and integrate
+    g.playerController.setVelocity(desiredVelocity);
+    g.playerController.integrate(dt, support, g.characterGravity);
+    
+    // Update visual mesh position
+    g.playerMesh.position.copyFrom(g.playerController.getPosition());
+}
+
+// Update using PhysicsAggregate (fallback)
+function updateWithPhysicsAggregate(dt) {
+    const g = window.game;
+    
+    // Calculate movement based on input and character orientation
+    let speed = g.isSprinting ? g.onGroundSpeed * 1.5 : g.onGroundSpeed;
+    
+    const moveVector = g.inputDirection.clone();
+    moveVector.applyRotationQuaternion(g.characterOrientation);
+    moveVector.scaleInPlace(speed);
+    
+    // Apply movement force
+    if (moveVector.length() > 0) {
+        g.playerAggregate.body.applyImpulse(moveVector.scale(dt), g.playerMesh.position);
+    }
+    
+    // Handle jumping
+    if (g.wantJump > 0 && g.characterState === "ON_GROUND") {
+        const jumpImpulse = new BABYLON.Vector3(0, Math.sqrt(2 * 9.81 * g.jumpHeight), 0);
+        g.playerAggregate.body.applyImpulse(jumpImpulse, g.playerMesh.position);
+        g.wantJump = 0;
+        g.characterState = "IN_AIR";
+    }
+}
+
+// Determine next character state
+function getNextCharacterState(supportInfo) {
+    const g = window.game;
+    
+    if (g.characterState === "IN_AIR") {
+        if (supportInfo && supportInfo.supportedState === BABYLON.CharacterSupportedState.SUPPORTED) {
+            return "ON_GROUND";
+        }
+        return "IN_AIR";
+    } else if (g.characterState === "ON_GROUND") {
+        if (supportInfo && supportInfo.supportedState !== BABYLON.CharacterSupportedState.SUPPORTED) {
+            return "IN_AIR";
+        }
+        if (g.wantJump > 0) {
+            g.wantJump--;
+            return "START_JUMP";
+        }
+        return "ON_GROUND";
+    } else if (g.characterState === "START_JUMP") {
+        return "IN_AIR";
+    }
+    
+    return g.characterState;
+}
+
+// Calculate desired velocity based on character state
+function getDesiredVelocity(dt, supportInfo, currentVelocity) {
+    const g = window.game;
+    
+    const upWorld = g.characterGravity.normalizeToNew().scale(-1.0);
+    const forwardWorld = new BABYLON.Vector3(0, 0, 1).applyRotationQuaternion(g.characterOrientation);
+    
+    let speed = g.isSprinting ? g.onGroundSpeed * 1.5 : g.onGroundSpeed;
+    
+    if (g.characterState === "IN_AIR") {
+        speed = g.inAirSpeed;
+        const desiredVelocity = g.inputDirection.scale(speed).applyRotationQuaternion(g.characterOrientation);
+        
+        let outputVelocity;
+        if (g.playerController.calculateMovement) {
+            outputVelocity = g.playerController.calculateMovement(
+                dt, forwardWorld, upWorld, currentVelocity, 
+                BABYLON.Vector3.ZeroReadOnly, desiredVelocity, upWorld
+            );
+        } else {
+            outputVelocity = desiredVelocity;
+        }
+        
+        // Preserve vertical velocity and add gravity
+        outputVelocity.addInPlace(upWorld.scale(-outputVelocity.dot(upWorld)));
+        outputVelocity.addInPlace(upWorld.scale(currentVelocity.dot(upWorld)));
+        outputVelocity.addInPlace(g.characterGravity.scale(dt));
+        
+        return outputVelocity;
+        
+    } else if (g.characterState === "ON_GROUND") {
+        const desiredVelocity = g.inputDirection.scale(speed).applyRotationQuaternion(g.characterOrientation);
+        
+        if (g.playerController.calculateMovement && supportInfo) {
+            return g.playerController.calculateMovement(
+                dt, forwardWorld, supportInfo.averageSurfaceNormal, 
+                currentVelocity, supportInfo.averageSurfaceVelocity, 
+                desiredVelocity, upWorld
+            );
+        } else {
+            return desiredVelocity;
+        }
+        
+    } else if (g.characterState === "START_JUMP") {
+        const jumpVelocity = Math.sqrt(2 * g.characterGravity.length() * g.jumpHeight);
+        const currentVerticalVelocity = currentVelocity.dot(upWorld);
+        return currentVelocity.add(upWorld.scale(jumpVelocity - currentVerticalVelocity));
+    }
+    
+    return BABYLON.Vector3.Zero();
+}
+
+// Update camera to follow player
+function updateCameraFollow() {
+    const g = window.game;
+    
+    if (g.playerController) {
+        const playerPos = g.playerController.getPosition();
+        g.camera.position.x = playerPos.x;
+        g.camera.position.z = playerPos.z;
+        g.camera.position.y = playerPos.y + 0.7; // Eye level offset
+    } else if (g.playerMesh) {
+        g.camera.position.x = g.playerMesh.position.x;
+        g.camera.position.z = g.playerMesh.position.z;
+        g.camera.position.y = g.playerMesh.position.y + 0.7;
+    }
+}
+
+// Modern event handlers with proper key mapping
+const onKeyDown = function(event) {
     const g = window.game;
     if (!g.gameActive) return;
     
     switch (event.code) {
         case 'KeyW':
+        case 'ArrowUp':
             g.moveForward = true;
             break;
         case 'KeyS':
+        case 'ArrowDown':
             g.moveBackward = true;
             break;
         case 'KeyA':
+        case 'ArrowLeft':
             g.moveLeft = true;
             break;
         case 'KeyD':
+        case 'ArrowRight':
             g.moveRight = true;
             break;
         case 'ShiftLeft':
@@ -53,9 +384,8 @@ const onKeyDown = function(event) { // Changed to non-exported function
             }
             break;
         case 'Space':
-            if (!g.isJumping) {
-                if(g.jump) g.jump(); 
-            }
+            event.preventDefault(); // Prevent page scroll
+            g.wantJump = Math.max(g.wantJump, 1);
             break;
         case 'KeyR':
             if (g.reload) g.reload(); 
@@ -82,31 +412,38 @@ const onKeyDown = function(event) { // Changed to non-exported function
     }
 };
 
-const onKeyUp = function(event) { // Changed to non-exported function
+const onKeyUp = function(event) {
     const g = window.game;
     if (!g.gameActive) return;
     
     switch (event.code) {
         case 'KeyW':
+        case 'ArrowUp':
             g.moveForward = false;
             break;
         case 'KeyS':
+        case 'ArrowDown':
             g.moveBackward = false;
             break;
         case 'KeyA':
+        case 'ArrowLeft':
             g.moveLeft = false;
             break;
         case 'KeyD':
+        case 'ArrowRight':
             g.moveRight = false;
             break;
         case 'ShiftLeft':
         case 'ShiftRight':
             g.isSprinting = false;
             break;
+        case 'Space':
+            g.wantJump = 0;
+            break;
     }
 };
 
-const onMouseDown = function(event) { // Changed to non-exported function
+const onMouseDown = function(event) {
     const g = window.game;
     if (!g.gameActive || g.isPaused) return;
     
@@ -125,7 +462,7 @@ const onMouseDown = function(event) { // Changed to non-exported function
     }
 };
 
-const onMouseUp = function(event) { // Changed to non-exported function
+const onMouseUp = function(event) {
     const g = window.game;
     if (!g.gameActive) return; 
     
@@ -140,64 +477,21 @@ const onMouseUp = function(event) { // Changed to non-exported function
     }
 };
 
-const onMouseMove = function(event) { // Changed to non-exported function
-    const g = window.game;
-    if (g.mouse) { 
-        g.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-        g.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    }
-};
-
-const updateCameraRotation = function(event) { // Changed to non-exported function
-    const g = window.game;
-    if (!g.gameActive || g.isPaused) return;
-    
-    const movementX = event.movementX || 0;
-    const movementY = event.movementY || 0;
-    
-    let pitch = 0;
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(g.camera.quaternion);
-    pitch = Math.asin(forward.y);
-    
-    g.camera.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -movementX * g.sensitivity);
-    
-    const newPitch = Math.max(-Math.PI/2 + 0.05, Math.min(Math.PI/2 - 0.05, pitch - movementY * g.sensitivity));
-    const pitchDelta = newPitch - pitch;
-    
-    g.camera.rotateX(pitchDelta);
-    
-    if (g.updateWeaponPosition) g.updateWeaponPosition();
-};
-
+// Setup all game controls
 window.game.setupControls = function() {
     const g = window.game;
+    
+    // Keyboard controls
     document.addEventListener('keydown', onKeyDown, false);
     document.addEventListener('keyup', onKeyUp, false);
+    
+    // Mouse controls
     document.addEventListener('mousedown', onMouseDown, false);
     document.addEventListener('mouseup', onMouseUp, false);
-    document.addEventListener('mousemove', onMouseMove, false); 
     
-    // Lock pointer when clicking on the game
-    if (g.renderer && g.renderer.domElement) {
-        g.renderer.domElement.addEventListener('click', function() {
-            if (g.gameActive && !g.isPaused) {
-                g.renderer.domElement.requestPointerLock();
-            }
-        });
-    }
-    
-    // Handle pointer lock changes
-    document.addEventListener('pointerlockchange', () => {
-        if (g.renderer && document.pointerLockElement === g.renderer.domElement) {
-            // Pointer locked, game is active
-            document.addEventListener('mousemove', updateCameraRotation, false); 
-        } else {
-            // Pointer unlocked, pause game if it was active
-            document.removeEventListener('mousemove', updateCameraRotation, false); 
-            if (g.gameActive && !g.isPaused) {
-                if(g.pauseGame) g.pauseGame(); 
-            }
-        }
+    // Prevent context menu on right click
+    g.canvas.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
     });
     
     // Setup play button
@@ -207,33 +501,39 @@ window.game.setupControls = function() {
     }
 };
 
+// Game state management functions
 window.game.startGame = function() {
     const g = window.game;
+    
     // Hide home screen
     const homeScreen = document.getElementById('home-screen');
     if (homeScreen) homeScreen.style.display = 'none';
     
-    // Show game UI
+    // Show game UI elements
     if (g.uiContainer) g.uiContainer.style.display = 'block';
-    if (g.waveText) g.waveText.style.display = 'block'; // waveText is on g
-    if (g.crosshair) g.crosshair.style.display = 'block'; // crosshair is on g
+    if (g.waveText) g.waveText.style.display = 'block';
+    if (g.crosshair) g.crosshair.style.display = 'block';
     
-    // Lock pointer
-    if (g.renderer && g.renderer.domElement) {
-        g.renderer.domElement.requestPointerLock();
-    }
+    // Request pointer lock
+    g.canvas.requestPointerLock();
     
     // Set game state to active
     g.gameActive = true;
     g.isPaused = false;
     
+    // Initialize player stats
+    g.playerHealth = 100;
+    g.characterState = "IN_AIR";
+    
     // Start first wave
     if (g.startNextWave) g.startNextWave(); 
     
-    // Reset player stats
-    g.playerHealth = 100;
+    // Update UI
     if(g.updateHealthBar) g.updateHealthBar(); 
-    if(g.updateAmmoText) g.updateAmmoText();  
+    if(g.updateAmmoText) g.updateAmmoText();
+    if(g.updateWaveText) g.updateWaveText();
+    
+    console.log("Game started");
 };
 
 window.game.pauseGame = function() {
@@ -242,6 +542,8 @@ window.game.pauseGame = function() {
     
     g.isPaused = true;
     document.exitPointerLock();
+    
+    console.log("Game paused");
 };
 
 window.game.resumeGame = function() {
@@ -249,24 +551,52 @@ window.game.resumeGame = function() {
     if (!g.gameActive) return;
     
     g.isPaused = false;
-    if (g.renderer && g.renderer.domElement) {
-        g.renderer.domElement.requestPointerLock();
-    }
+    g.canvas.requestPointerLock();
+    
+    console.log("Game resumed");
 };
 
 window.game.gameOver = function() {
     const g = window.game;
     g.gameActive = false;
-    const gameOverScreen = document.getElementById('game-over-screen');
-    if (gameOverScreen) gameOverScreen.style.display = 'flex';
+    g.isPaused = false;
+    
+    // Show game over screen
+    if (g.showGameOver) g.showGameOver();
+    
+    // Release pointer lock
     document.exitPointerLock();
+    
+    console.log("Game over");
 };
 
-// onKeyDown, onKeyUp, onMouseDown, onMouseUp, onMouseMove, updateCameraRotation
-// remain as module-scoped (not globalized) as they are primarily event handlers
-// or tightly coupled to event handling logic in setupControls.
-// Their internal logic already uses `g` (window.game).
+// Player health and damage system
+window.game.damagePlayer = function(amount) {
+    const g = window.game;
+    g.playerHealth = Math.max(0, g.playerHealth - amount);
+    
+    if(g.updateHealthBar) g.updateHealthBar(); 
+    
+    g.damageFlashTime = 0.3;
+    g.lastHealthRegen = Date.now();
+    
+    if (g.playerHealth <= 0) {
+        if(g.gameOver) g.gameOver(); 
+    }
+    
+    console.log(`Player took ${amount} damage, health: ${g.playerHealth}`);
+};
 
+window.game.updateHealthRegen = function() { 
+    const g = window.game;
+    const now = Date.now();
+    if (g.playerHealth < 100 && now - g.lastHealthRegen >= g.healthRegenDelay) {
+        g.playerHealth = Math.min(100, g.playerHealth + g.healthRegenRate * g.deltaTime);
+        if(g.updateHealthBar) g.updateHealthBar(); 
+    }
+};
+
+// Modern sliding functions (simplified for now)
 window.game.startSlide = function() {
     const g = window.game;
     if (g.isSliding) return;
@@ -274,296 +604,18 @@ window.game.startSlide = function() {
     g.isSliding = true;
     g.slideTimer = 0;
     
-    // Variables for slide camera effects
-    let cameraForwardTilt = 0;
-    let cameraSideTilt = 0;
+    console.log("Started sliding");
     
-    // Smooth transition to slide height
-    const startHeight = g.camera.position.y;
-    const targetHeight = 0.6; // Lower height for more dramatic slide effect
-    const transitionTime = 150; // ms, slightly longer for smoother transition
-    
-    // Apply direction-aware slide boost
-    const slideBoost = 3.5; // Increased boost for faster slides
-    
-    // Use camera's forward direction for sliding
-    const slideDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(g.camera.quaternion);
-    slideDirection.y = 0; // Keep on ground plane
-    slideDirection.normalize();
-    
-    // Apply direction from movement keys if pressing any
-    if (g.moveForward || g.moveBackward || g.moveLeft || g.moveRight) {
-        // Create movement vector from input
-        const moveVector = new THREE.Vector3(
-            (g.moveRight ? 1 : 0) - (g.moveLeft ? 1 : 0),
-            0,
-            (g.moveBackward ? 1 : 0) - (g.moveForward ? 1 : 0)
-        );
-        
-        // Convert to world space
-        if (moveVector.length() > 0) {
-            moveVector.normalize();
-            moveVector.applyQuaternion(g.camera.quaternion);
-            moveVector.y = 0;
-            moveVector.normalize();
-            
-            // Use this direction instead
-            slideDirection.copy(moveVector);
-            
-            // Calculate camera tilt based on direction (side tilt when sliding left/right)
-            if (g.moveLeft) cameraSideTilt = 0.1;
-            else if (g.moveRight) cameraSideTilt = -0.1;
-        }
-    }
-    
-    // Forward camera tilt for sliding
-    cameraForwardTilt = 0.15;
-    
-    // Initial camera and position when starting slide
-    const initialCameraQuaternion = g.camera.quaternion.clone();
-    
-    // Create smooth transition for camera height and tilt
-    const startTime = Date.now();
-    const slideTransition = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / transitionTime, 1);
-        
-        // Smooth easing function (ease-out)
-        const easeProgress = 1 - Math.pow(1 - progress, 3); // Cubic ease-out for smoother feel
-        
-        // Transition height
-        g.camera.position.y = startHeight - (startHeight - targetHeight) * easeProgress;
-        
-        // Apply camera tilt effects smoothly
-        if (progress < 1) {
-            // Create tilt quaternion
-            const tiltQuaternion = new THREE.Quaternion().setFromEuler(
-                new THREE.Euler(
-                    cameraForwardTilt * easeProgress, // Forward tilt
-                    0,
-                    cameraSideTilt * easeProgress // Side tilt
-                )
-            );
-            
-            // Apply to camera
-            g.camera.quaternion.copy(initialCameraQuaternion.clone().multiply(tiltQuaternion));
-        }
-        
-        if (progress >= 1) {
-            clearInterval(slideTransition);
-        }
-    }, 16);
-    
-    // Apply velocity in slide direction
-    g.playerVelocity.x = slideDirection.x * slideBoost;
-    g.playerVelocity.z = slideDirection.z * slideBoost;
+    // TODO: Implement proper physics-based sliding with character controller
+    setTimeout(() => {
+        if (g.endSlide) g.endSlide();
+    }, 700);
 };
 
 window.game.endSlide = function() { 
-  const g = window.game;
-  if (!g.isSliding) return;
-
-  // Store current position and initial slide roll value
-  const startHeight = g.camera.position.y;
-  const initialRollValue = (g.getQuaternionRoll && typeof g.getQuaternionRoll === 'function') ? g.getQuaternionRoll(g.camera.quaternion) : 0; 
-  const targetHeight = 1.7; // Normal player height
-  const transitionTime = 180; // ms
-
-  // Create smooth transition to standing
-  const startTime = Date.now();
-  const endSlideTransition = setInterval(() => {
-    const elapsed = Date.now() - startTime;
-    const progress = Math.min(elapsed / transitionTime, 1);
-
-    // Smooth easing function (ease-out quad)
-    const easeProgress = 1 - Math.pow(1 - progress, 2);
-
-    // Transition height
-    g.camera.position.y = startHeight + (targetHeight - startHeight) * easeProgress;
-
-    // --- Only remove the roll component while preserving current look direction ---
-    // Get current orientation
-    const currentEuler = new THREE.Euler().setFromQuaternion(g.camera.quaternion, 'YXZ');
-    
-    // Calculate how much roll to remove based on progress
-    const remainingRoll = initialRollValue * (1 - easeProgress);
-    
-    // Apply the new roll value while keeping current pitch and yaw
-    currentEuler.z = remainingRoll;
-    
-    // Update camera quaternion with the new orientation
-    g.camera.quaternion.setFromEuler(currentEuler);
-    // --- End rotation handling ---
-
-    if (progress >= 1) {
-      clearInterval(endSlideTransition);
-      // Ensure final state is set exactly
-      g.camera.position.y = targetHeight;
-      
-      // Force zero roll but keep current pitch and yaw
-      const finalEuler = new THREE.Euler().setFromQuaternion(g.camera.quaternion, 'YXZ');
-      finalEuler.z = 0;
-      g.camera.quaternion.setFromEuler(finalEuler);
-      
-      g.isSliding = false;
-    }
-  }, 16); // Roughly 60fps interval
-};
-
-window.game.jump = function() {
     const g = window.game;
-    if (g.isJumping) return;
+    if (!g.isSliding) return;
     
-    g.isJumping = true;
-    g.jumpForce = 0.15;
-};
-
-window.game.checkPlayerCollision = function(pos) { // pos is a parameter
-    const g = window.game;
-    const radius = 0.4; // horizontal collision radius
-    const playerHeight = 1.7; // eye height above ground
-    for (const obj of g.scene.children) { // Use g.scene
-        if (obj.geometry && obj.geometry.type === 'BoxGeometry') {
-            const box = new THREE.Box3().setFromObject(obj);
-            // Only check collision if vertical ranges overlap
-            const playerMinY = pos.y - playerHeight; // pos is parameter
-            const playerMaxY = pos.y; // pos is parameter
-            if (box.min.y > playerMaxY || box.max.y < playerMinY) continue;
-            // Check overlap in XZ plane only
-            if (pos.x + radius > box.min.x && pos.x - radius < box.max.x &&
-                pos.z + radius > box.min.z && pos.z - radius < box.max.z) {
-                return true;
-            }
-        }
-    }
-    return false;
-};
-
-window.game.updatePlayer = function() { 
-    const g = window.game;
-    // Reset player direction
-    g.playerDirection.x = 0;
-    g.playerDirection.z = 0;
-    
-    // Calculate forward/backward/left/right direction
-    if (g.moveForward) {
-        g.playerDirection.z = -1;
-    } else if (g.moveBackward) {
-        g.playerDirection.z = 1;
-    }
-    
-    if (g.moveLeft) {
-        g.playerDirection.x = -1;
-    } else if (g.moveRight) {
-        g.playerDirection.x = 1;
-    }
-    
-    // Normalize direction vector to prevent faster diagonal movement
-    if (g.playerDirection.length() > 0) {
-        g.playerDirection.normalize();
-    }
-    
-    // Create a movement vector that's relative to where we're looking
-    const moveVector = new THREE.Vector3(g.playerDirection.x, 0, g.playerDirection.z);
-    moveVector.applyQuaternion(g.camera.quaternion);
-    moveVector.y = 0; // Keep movement on the ground plane
-    
-    // Set movement speed based on player state
-    let speed = 5.0; // Base speed
-    
-    if (g.isSliding) {
-        // Update slide timer
-        g.slideTimer += g.deltaTime; // Use g.deltaTime
-        
-        // End slide after duration
-        if (g.slideTimer >= 0.7 || g.isJumping) { // Extended slide duration
-            if(g.endSlide) g.endSlide(); 
-            if(g.jump) g.jump();     
-        } else {
-            // Improved slide curve with better feel - less abrupt deceleration
-            const slideProgress = g.slideTimer / 0.7;
-            speed = 10.0 * Math.pow(1 - slideProgress, 1.5); // Smoother deceleration curve
-        }
-    } else if (g.isSprinting) {
-        speed = 8.0; // Sprint speed
-    }
-    
-    // Apply movement to velocity
-    g.playerVelocity.x = moveVector.x * speed * g.deltaTime; // Use g.deltaTime
-    g.playerVelocity.z = moveVector.z * speed * g.deltaTime; // Use g.deltaTime
-    
-    // Handle jumping and gravity
-    if (g.isJumping) {
-        // Apply jump force and gravity
-        g.jumpForce -= 0.5 * g.deltaTime; // Gravity, use g.deltaTime
-        g.playerVelocity.y = g.jumpForce;
-        
-        // Check ground collision
-        if (g.camera.position.y + g.playerVelocity.y <= 1.7) {
-            // Land on ground
-            g.camera.position.y = 1.7;
-            g.playerVelocity.y = 0;
-            g.jumpForce = 0;
-            g.isJumping = false;
-        }
-    }
-    
-    // --- COLLISION HANDLING: resolve axes separately ---
-    const currPos = g.camera.position.clone();
-    const dx = g.playerVelocity.x;
-    const dz = g.playerVelocity.z;
-    // X axis
-    const xPos = currPos.clone().add(new THREE.Vector3(dx, 0, 0));
-    if (g.checkPlayerCollision && !g.checkPlayerCollision(xPos)) { 
-        g.camera.position.x = xPos.x;
-    }
-    // Z axis
-    const zPos = currPos.clone().add(new THREE.Vector3(0, 0, dz));
-    if (g.checkPlayerCollision && !g.checkPlayerCollision(zPos)) { 
-        g.camera.position.z = zPos.z;
-    }
-
-    // Y axis (jumping)
-    g.camera.position.y += g.playerVelocity.y;
-    
-    // Simple boundary check
-    g.camera.position.x = Math.max(-49, Math.min(49, g.camera.position.x));
-    g.camera.position.z = Math.max(-49, Math.min(49, g.camera.position.z));
-    
-    // Force y position if not jumping (keep player on ground)
-    if (!g.isJumping) {
-        g.camera.position.y = g.isSliding ? 0.8 : 1.7;
-    }
-    
-    // Reset velocity for next frame
-    g.playerVelocity.set(0, 0, 0);
-};
-
-window.game.damagePlayer = function(amount) { // amount is a parameter
-    const g = window.game;
-    // Reduce health
-    g.playerHealth = Math.max(0, g.playerHealth - amount);
-    
-    // Update health bar
-    if(g.updateHealthBar) g.updateHealthBar(); 
-    
-    // Screen damage effect
-    g.damageFlashTime = 0.3;
-    
-    // Reset health regen timer
-    g.lastHealthRegen = Date.now();
-    
-    // Check for death
-    if (g.playerHealth <= 0) {
-        if(g.gameOver) g.gameOver(); 
-    }
-};
-
-window.game.updateHealthRegen = function() { 
-    const g = window.game;
-    const now = Date.now();
-    if (g.playerHealth < 100 && now - g.lastHealthRegen >= g.healthRegenDelay) {
-        g.playerHealth = Math.min(100, g.playerHealth + g.healthRegenRate * g.deltaTime); // Use g.deltaTime
-        if(g.updateHealthBar) g.updateHealthBar(); 
-    }
+    g.isSliding = false;
+    console.log("Ended sliding");
 };
