@@ -161,7 +161,7 @@ window.game.updateWeaponPosition = function() {
     
     // Set weapon position and rotation
     weapon.model.position.copyFrom(weaponPos);
-    weapon.model.rotationQuaternion = g.camera.rotationQuaternion ? g.camera.rotationQuaternion.clone() : null;
+    weapon.model.rotation.copyFrom(g.camera.rotation); // Use Euler rotation instead of quaternion
 
     // Apply scaling
     weapon.model.scaling = new BABYLON.Vector3(scale, scale, scale);
