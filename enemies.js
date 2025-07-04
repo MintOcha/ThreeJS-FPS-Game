@@ -47,9 +47,12 @@ window.game.spawnEnemy = function() {
     
     enemyMesh.position.copyFrom(spawnPos);
     
-    // Add physics to enemy using PhysicsAggregate for better Havok compatibility
+    // Add physics to enemy using PhysicsAggregate with proper dynamic motion
     const enemyAggregate = new BABYLON.PhysicsAggregate(enemyMesh, BABYLON.PhysicsShapeType.BOX, 
         { mass: 1, restitution: 0.1, friction: 0.8 }, g.scene);
+    
+    // Set motion type to dynamic so enemies can move
+    enemyAggregate.body.setMotionType(BABYLON.PhysicsMotionType.DYNAMIC);
     
     // Set linear damping to prevent sliding
     enemyAggregate.body.setLinearDamping(0.5);
@@ -88,7 +91,14 @@ window.game.spawnEnemy = function() {
     const collisionObservable = enemyAggregate.body.getCollisionObservable();
     collisionObservable.add((collisionEvent) => {
         // Check if colliding with player
-        if (collisionEvent.collidedAgainst === g.playerAggregate?.body && enemy.attackCooldown <= 0) {
+        const collidedBody = collisionEvent.collidedAgainst;
+        
+        // More robust player collision detection
+        const isPlayerCollision = g.playerAggregate && 
+            (collidedBody === g.playerAggregate.body || 
+             (g.playerMesh && collisionEvent.collidedAgainst.transformNode === g.playerMesh));
+        
+        if (isPlayerCollision && enemy.attackCooldown <= 0) {
             if(g.damagePlayer) g.damagePlayer(10);
             enemy.attackCooldown = 1.0;
         }
@@ -107,21 +117,28 @@ window.game.updateEnemies = function() {
         }
         
         // Move towards player using physics
-        if (!g.camera || !g.playerAggregate) return;
+        if (!g.camera) return;
         
-        const direction = g.playerAggregate.transformNode.position.subtract(enemy.mesh.position);
+        // Get player position from camera (since player follows camera)
+        const playerPosition = g.camera.position;
+        
+        const direction = playerPosition.subtract(enemy.mesh.position);
         direction.y = 0; // Keep enemy on ground
-        direction.normalize();
         
-        // Apply force towards player
-        const force = direction.scale(enemy.speed * 50); // Scale for physics force
-        enemy.aggregate.body.applyForce(force, enemy.mesh.position);
-        
-        // Make enemy face player
-        enemy.mesh.lookAt(new BABYLON.Vector3(g.playerAggregate.transformNode.position.x, enemy.mesh.position.y, g.playerAggregate.transformNode.position.z));
+        // Only move if there's a significant distance
+        if (direction.length() > 0.1) {
+            direction.normalize();
+            
+            // Apply force towards player
+            const force = direction.scale(enemy.speed * 200); // Further increased force
+            enemy.aggregate.body.applyForce(force, enemy.mesh.position);
+            
+            // Make enemy face player
+            enemy.mesh.lookAt(new BABYLON.Vector3(playerPosition.x, enemy.mesh.position.y, playerPosition.z));
+        }
         
         // Check for attack range (collision handles actual damage)
-        const distanceToPlayer = BABYLON.Vector3.Distance(enemy.mesh.position, g.playerAggregate.transformNode.position);
+        const distanceToPlayer = BABYLON.Vector3.Distance(enemy.mesh.position, playerPosition);
         // Attack logic is now handled by collision detection
     }
 };

@@ -474,6 +474,3 @@ window.game.shoot = function() {
     } 
     return true; 
 }
-
-
-

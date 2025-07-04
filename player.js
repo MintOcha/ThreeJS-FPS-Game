@@ -124,13 +124,13 @@ function setupPointerControls() {
     // Handle mouse movement for camera rotation
     g.canvas.addEventListener('mousemove', (event) => {
         if (document.pointerLockElement === g.canvas && g.gameActive && !g.isPaused) {
-            const sensitivity = 0.001; // Reduced sensitivity
+            const sensitivity = 0.002; // Increased sensitivity
             
             // Horizontal rotation (Y-axis)
             g.camera.rotation.y += event.movementX * sensitivity;
             
             // Vertical rotation (X-axis) with limits - invert Y movement
-            g.camera.rotation.x -= event.movementY * sensitivity; // Note the minus sign
+            g.camera.rotation.x += event.movementY * sensitivity; 
             g.camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, g.camera.rotation.x));
             
             // Update character orientation for movement direction
@@ -599,14 +599,23 @@ window.game.updateHealthRegen = function() {
 // Modern sliding functions (simplified for now)
 window.game.startSlide = function() {
     const g = window.game;
-    if (g.isSliding) return;
+    if (g.isSliding || g.characterState !== "ON_GROUND") return;
     
     g.isSliding = true;
     g.slideTimer = 0;
     
+    // Apply forward momentum for sliding
+    const slideForce = g.inputDirection.length() > 0 ? 
+        g.inputDirection.normalize().scale(15) : 
+        new BABYLON.Vector3(0, 0, 1).applyRotationQuaternion(g.characterOrientation).scale(15);
+    
+    if (g.playerAggregate) {
+        g.playerAggregate.body.applyImpulse(slideForce, g.playerAggregate.transformNode.position);
+    }
+    
     console.log("Started sliding");
     
-    // TODO: Implement proper physics-based sliding with character controller
+    // End slide after duration
     setTimeout(() => {
         if (g.endSlide) g.endSlide();
     }, 700);
