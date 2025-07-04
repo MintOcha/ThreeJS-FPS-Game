@@ -298,9 +298,14 @@ window.game.createRocket = function(startPos, direction) {
 // Original Goal: Handle shooting for all weapon types, manage ammo, create projectiles, perform hit detection with penetration
 // New Implementation: Uses Babylon.js ray casting, removes knockback, preserves penetration mechanics and tracers
 window.game.shoot = function() {
+    console.log("SHOOT FUNCTION CALLED!"); // Debug log
     const g = window.game;
     const weapon = g.weapons[g.currentWeapon];
-    if (!weapon || !g.camera || !g.scene) return;
+    console.log("Current weapon:", g.currentWeapon, "Weapon data:", weapon); // Debug log
+    if (!weapon || !g.camera || !g.scene) {
+        console.log("Early return - missing:", { weapon: !!weapon, camera: !!g.camera, scene: !!g.scene }); // Debug log
+        return;
+    }
 
     // Auto-Reload if gun has no ammo
     if (weapon.currentAmmo <= 0 && weapon.magazineSize !== Infinity) { 
@@ -369,9 +374,12 @@ window.game.shoot = function() {
                 });
 
                 if (hit && hit.hit) {
+                    console.log("Raycast hit something:", hit.pickedMesh ? hit.pickedMesh.name : "unknown"); // Debug log
+                    
                     // Check if hit an enemy
                     const enemy = g.enemies && g.enemies.find(e => e.mesh === hit.pickedMesh);
                     if (enemy) {
+                        console.log(`Hit enemy ${enemy.id} with raycast`); // Debug log
                         const distance = BABYLON.Vector3.Distance(g.camera.position, hit.pickedPoint);
                         let damage = weapon.damage;
                         if (distance > weapon.minRange && weapon.maxRange > weapon.minRange) { 
@@ -380,6 +388,7 @@ window.game.shoot = function() {
                         }
                         if (g.damageEnemy) g.damageEnemy(enemy, Math.round(damage), hit.pickedPoint);
                     } else {
+                        console.log("Raycast hit non-enemy object, creating bullet impact"); // Debug log
                         g.createBulletImpact(hit.pickedPoint, hit.getNormal());
                     }
                 }

@@ -304,6 +304,7 @@ function animate() {
     if (g.gameActive && !g.isPaused) {
         // Handle automatic shooting
         if (g.isShooting && g.weapons[g.currentWeapon] && g.weapons[g.currentWeapon].automatic) {
+            console.log("Automatic shooting triggered"); // Debug log
             if(g.shoot) g.shoot();
         }
         

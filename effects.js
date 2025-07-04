@@ -367,56 +367,85 @@ window.game.updateDamageNumbers = function() {
 
 window.game.updateEnemyHealthBar = function(enemy) {
     const g = window.game;
-    // Create health bar if it doesn't exist
+    console.log(`Updating health bar for enemy ${enemy.id}, health: ${enemy.health}/${enemy.maxHealth}`); // Debug log
+    
+    // Create Babylon.js GUI health bar if it doesn't exist
     if (!g.enemyHealthBars[enemy.id]) {
-        const barContainer = document.createElement('div');
-        barContainer.style.position = 'absolute';
-        barContainer.style.width = '50px';
-        barContainer.style.height = '5px';
-        barContainer.style.backgroundColor = 'rgba(0,0,0,0.5)';
-        barContainer.style.border = '1px solid rgba(255,255,255,0.3)';
-        barContainer.style.pointerEvents = 'none';
+        console.log(`Creating new health bar for enemy ${enemy.id}`); // Debug log
         
-        const barFill = document.createElement('div');
-        barFill.style.position = 'absolute';
-        barFill.style.top = '0';
-        barFill.style.left = '0';
-        barFill.style.height = '100%';
-        barFill.style.backgroundColor = 'rgba(255,50,50,0.8)';
-        barFill.style.width = '100%';
+        // Create health bar using Babylon.js GUI
+        const healthBarTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("healthBarUI_" + enemy.id);
         
-        barContainer.appendChild(barFill);
-        const containerElement = document.getElementById('enemy-health-bar-container');
-        if (containerElement) {
-            containerElement.appendChild(barContainer);
-        }
+        // Create background rectangle
+        const background = new BABYLON.GUI.Rectangle("healthBarBg_" + enemy.id);
+        background.widthInPixels = 60;
+        background.heightInPixels = 8;
+        background.cornerRadius = 2;
+        background.color = "white";
+        background.thickness = 1;
+        background.background = "rgba(0, 0, 0, 0.7)";
         
+        // Create health fill rectangle
+        const healthFill = new BABYLON.GUI.Rectangle("healthBarFill_" + enemy.id);
+        healthFill.widthInPixels = 56;
+        healthFill.heightInPixels = 6;
+        healthFill.cornerRadius = 1;
+        healthFill.background = "rgba(255, 50, 50, 0.9)";
+        healthFill.color = "transparent";
+        healthFill.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+        
+        // Add to texture
+        healthBarTexture.addControl(background);
+        background.addControl(healthFill);
+        
+        // Store references
         g.enemyHealthBars[enemy.id] = {
-            container: barContainer,
-            fill: barFill
+            texture: healthBarTexture,
+            background: background,
+            fill: healthFill,
+            isVisible: true,
+            lastUpdateTime: Date.now()
         };
     }
     
-    // Update health bar fill
-    const healthPercent = enemy.health / enemy.maxHealth * 100;
-    g.enemyHealthBars[enemy.id].fill.style.width = `${healthPercent}%`;
+    const healthBar = g.enemyHealthBars[enemy.id];
     
-    // Show health bar
-    g.enemyHealthBars[enemy.id].container.style.visibility = 'visible';
+    // Update health fill width
+    const healthPercent = Math.max(0, enemy.health / enemy.maxHealth);
+    healthBar.fill.widthInPixels = Math.max(2, 56 * healthPercent);
+    
+    // Update color based on health
+    if (healthPercent > 0.6) {
+        healthBar.fill.background = "rgba(50, 255, 50, 0.9)"; // Green
+    } else if (healthPercent > 0.3) {
+        healthBar.fill.background = "rgba(255, 255, 50, 0.9)"; // Yellow
+    } else {
+        healthBar.fill.background = "rgba(255, 50, 50, 0.9)"; // Red
+    }
     
     // Position health bar above enemy
     const enemyWorldPos = enemy.mesh.position.clone();
-    enemyWorldPos.y += 2.5;
+    enemyWorldPos.y += 3.0; // Height above enemy
     
-    const screenPosition = BABYLON.Vector3.Project(
+    // Project world position to screen coordinates
+    const screenPos = BABYLON.Vector3.Project(
         enemyWorldPos,
         BABYLON.Matrix.Identity(),
         g.scene.getTransformMatrix(),
         g.camera.viewport.toGlobal(g.engine.getRenderWidth(), g.engine.getRenderHeight())
     );
     
-    g.enemyHealthBars[enemy.id].container.style.left = `${screenPosition.x - 25}px`;
-    g.enemyHealthBars[enemy.id].container.style.top = `${screenPosition.y}px`;
+    // Convert to GUI coordinates (0-1 range)
+    const guiX = (screenPos.x / g.engine.getRenderWidth()) * 2 - 1;
+    const guiY = -((screenPos.y / g.engine.getRenderHeight()) * 2 - 1);
+    
+    healthBar.background.leftInPixels = screenPos.x - 30;
+    healthBar.background.topInPixels = screenPos.y - 4;
+    
+    // Show health bar
+    healthBar.background.isVisible = true;
+    healthBar.isVisible = true;
+    healthBar.lastUpdateTime = Date.now();
     
     // Hide after delay
     if (enemy.healthBarTimeout) {
@@ -424,8 +453,9 @@ window.game.updateEnemyHealthBar = function(enemy) {
     }
     
     enemy.healthBarTimeout = setTimeout(() => {
-        if (g.enemyHealthBars[enemy.id]) {
-            g.enemyHealthBars[enemy.id].container.style.visibility = 'hidden';
+        if (g.enemyHealthBars[enemy.id] && g.enemyHealthBars[enemy.id].background) {
+            g.enemyHealthBars[enemy.id].background.isVisible = false;
+            g.enemyHealthBars[enemy.id].isVisible = false;
         }
-    }, 2000);
+    }, 3000);
 };

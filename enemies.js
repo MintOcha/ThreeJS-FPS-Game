@@ -166,6 +166,8 @@ window.game.startNextWave = function() {
 
 window.game.damageEnemy = function(enemy, amount, hitPoint) {
     const g = window.game;
+    console.log(`Damaging enemy ${enemy.id} for ${amount} damage, current health: ${enemy.health}`); // Debug log
+    
     // Play hit sound
     if (g.sounds && g.sounds.hit) {
         g.sounds.hit.play();
@@ -173,6 +175,7 @@ window.game.damageEnemy = function(enemy, amount, hitPoint) {
     
     // Reduce enemy health
     enemy.health -= amount;
+    console.log(`Enemy ${enemy.id} health after damage: ${enemy.health}`); // Debug log
     
     // Show damage number
     if (g.showDamageNumber) { 
@@ -186,24 +189,33 @@ window.game.damageEnemy = function(enemy, amount, hitPoint) {
     
     // Check for death
     if (enemy.health <= 0) {
+        console.log(`Enemy ${enemy.id} died`); // Debug log
         window.game.killEnemy(enemy); 
     }
 };
 
 window.game.killEnemy = function(enemy) {
     const g = window.game;
+    console.log(`Killing enemy ${enemy.id}, health was: ${enemy.health}`); // Debug log
+    
     // Remove from scene
     if (g.scene && enemy.mesh) {
         enemy.mesh.dispose();
     }
     
-    // Remove health bar if it exists
+    // Remove Babylon.js GUI health bar if it exists
     if (g.enemyHealthBars && g.enemyHealthBars[enemy.id]) {
-        const healthBarContainer = document.getElementById('enemy-health-bar-container');
-        if (healthBarContainer && g.enemyHealthBars[enemy.id].container.parentNode === healthBarContainer) {
-             healthBarContainer.removeChild(g.enemyHealthBars[enemy.id].container);
+        const healthBar = g.enemyHealthBars[enemy.id];
+        if (healthBar.texture) {
+            healthBar.texture.dispose();
         }
         delete g.enemyHealthBars[enemy.id];
+        console.log(`Removed health bar for enemy ${enemy.id}`); // Debug log
+    }
+    
+    // Clear health bar timeout
+    if (enemy.healthBarTimeout) {
+        clearTimeout(enemy.healthBarTimeout);
     }
     
     // Remove from enemies array
@@ -214,6 +226,7 @@ window.game.killEnemy = function(enemy) {
     
     // Update enemies remaining
     g.enemiesRemaining--;
+    console.log(`Enemies remaining: ${g.enemiesRemaining}`); // Debug log
     
     // Check if wave is cleared
     if (g.enemiesRemaining <= 0) {

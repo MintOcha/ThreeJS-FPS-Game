@@ -445,13 +445,17 @@ const onKeyUp = function(event) {
 
 const onMouseDown = function(event) {
     const g = window.game;
+    console.log("Mouse down event:", event.button, "Game active:", g.gameActive, "Paused:", g.isPaused); // Debug log
     if (!g.gameActive || g.isPaused) return;
     
     switch (event.button) {
         case 0: // Left mouse button
+            console.log("Left click detected. Shoot function available:", !!g.shoot); // Debug log
             if (g.weapons[g.currentWeapon] && g.weapons[g.currentWeapon].automatic) {
                 g.isShooting = true;
+                console.log("Setting isShooting to true for automatic weapon"); // Debug log
             } else {
+                console.log("Calling shoot function for non-automatic weapon"); // Debug log
                 if (g.shoot) g.shoot(); 
             }
             break;
