@@ -23,8 +23,8 @@ window.game.createWeaponModels = async function() {
     };
     
     // Create default cube fallback
-    const createCubeFallback = (name, size = 1) => {
-        return BABYLON.MeshBuilder.CreateBox(name, {size}, scene);
+    const createCubeFallback = (name) => {
+        return BABYLON.MeshBuilder.CreateBox(name, {width: 0.1, height: 0.1, depth: 0.2}, scene);
     };
     
     // Load all weapon models

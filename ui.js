@@ -16,6 +16,8 @@
 // UI functions assigned to window.game
 window.game.setupUI = function() {
     const g = window.game;
+
+
     g.uiContainer = document.getElementById('ui-container');
     g.healthBarFill = document.getElementById('health-bar-fill');
     g.healthText = document.getElementById('health-text');

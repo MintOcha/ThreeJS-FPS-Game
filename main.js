@@ -238,12 +238,12 @@ async function setup() {
         window.game.lastTime = performance.now();
         
         // Setup game components
-        if(window.game.setupUI) window.game.setupUI();
-        if(window.game.setupLighting) window.game.setupLighting();
-        if(window.game.createWorld) window.game.createWorld();
-        if(window.game.createPlayer) window.game.createPlayer();
-        if(window.game.setupControls) window.game.setupControls();
-        if(window.game.createWeaponModels) window.game.createWeaponModels();
+        window.game.setupUI();
+        window.game.setupLighting();
+        window.game.createWorld();
+        window.game.createPlayer();
+        window.game.setupControls();
+        window.game.createWeaponModels();
         
         // Load sounds
         loadSounds();
