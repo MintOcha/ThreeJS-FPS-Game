@@ -63,6 +63,9 @@ window.game.spawnEnemy = function() {
         inertia: new BABYLON.Vector3(0, 0, 0)
     });
     
+    // Enable collision callbacks
+    enemyAggregate.body.setCollisionCallbackEnabled(true);
+    
     // Add to shadow casters
     if (g.shadowGenerator) {
         g.shadowGenerator.addShadowCaster(enemyMesh);
@@ -83,26 +86,15 @@ window.game.spawnEnemy = function() {
         maxHealth: health,
         speed: 0.05,
         attackCooldown: 0,
-        lastAttackTime: 0
+        lastAttackTime: 0,
+        isDead: false // Add isDead flag
     };
-    
-    // Setup collision callbacks using PhysicsAggregate
-    enemyAggregate.body.setCollisionCallbackEnabled(true);
-    const collisionObservable = enemyAggregate.body.getCollisionObservable();
-    collisionObservable.add((collisionEvent) => {
-        // Check if colliding with player
-        const collidedBody = collisionEvent.collidedAgainst;
-        
-        // More robust player collision detection
-        const isPlayerCollision = g.playerAggregate && 
-            (collidedBody === g.playerAggregate.body || 
-             (g.playerMesh && collisionEvent.collidedAgainst.transformNode === g.playerMesh));
-        
-        if (isPlayerCollision && enemy.attackCooldown <= 0) {
-            if(g.damagePlayer) g.damagePlayer(10);
-            enemy.attackCooldown = 1.0;
-        }
-    });
+
+    // Set metadata on the transformNode (the mesh) for collision and raycast detection
+    enemyMesh.metadata = {
+        type: "enemyHitbox",
+        enemy: enemy
+    };
     
     // Add to enemies array
     g.enemies.push(enemy);
@@ -196,6 +188,9 @@ window.game.damageEnemy = function(enemy, amount, hitPoint) {
 
 window.game.killEnemy = function(enemy) {
     const g = window.game;
+    if (enemy.isDead) return; // Prevent multiple kills
+    enemy.isDead = true; // Set dead flag
+
     console.log(`Killing enemy ${enemy.id}, health was: ${enemy.health}`); // Debug log
     
     // Remove from scene

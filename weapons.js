@@ -203,112 +203,13 @@ window.game.reload = function() {
     }, weapon.reloadTime);
 }
 
-
-
-// Create bullet impact effect using Babylon.js
-// Original Goal: Create visual impact effects when bullets hit surfaces
-// New Implementation: Uses Babylon.js particle systems or simple mesh effects
-window.game.createBulletImpact = function(position, normal) {
-    const g = window.game;
-    if (!g.scene) return;
-    
-    // Create impact spark effect
-    const impact = BABYLON.MeshBuilder.CreateBox("impact", {width: 0.1, height: 0.1, depth: 0.02}, g.scene);
-    const impactMat = new BABYLON.StandardMaterial("impactMat", g.scene);
-    impactMat.diffuseColor = new BABYLON.Color3(1, 0.67, 0);
-    impactMat.emissiveColor = new BABYLON.Color3(1, 0.67, 0);
-    impact.material = impactMat;
-    
-    impact.position.copyFrom(position);
-    
-    // Orient impact based on surface normal
-    if (normal) {
-        impact.lookAt(position.add(normal));
-    }
-    
-    // Fade out and dispose
-    setTimeout(() => {
-        impact.dispose();
-    }, 100);
-}
-
-// Create rocket projectile using Babylon.js
-// Original Goal: Create rocket projectiles with physics and explosion on impact
-// New Implementation: Uses Babylon.js physics and collision detection
-window.game.createRocket = function(startPos, direction) {
-    const g = window.game;
-    if (!g.scene) return;
-    
-    const weapon = g.weapons[g.WEAPON_ROCKET];
-    if (!weapon || !weapon.bulletModel) return;
-    
-    // Create rocket instance
-    const rocket = weapon.bulletModel.createInstance("rocket");
-    rocket.position.copyFrom(startPos);
-    
-    // Orient rocket
-    const lookDirection = direction.normalize();
-    rocket.lookAt(rocket.position.add(lookDirection));
-    
-    // Rocket properties
-    const speed = 30;
-    const explosionRadius = weapon.explosionRadius || 10;
-    const explosionDamage = weapon.damage || 100;
-    
-    // Animate rocket
-    const animateRocket = () => {
-        // Move rocket
-        rocket.position.addInPlace(lookDirection.scale(speed * g.scene.getEngine().getDeltaTime() / 1000));
-        
-        // Check for collision using Babylon.js ray casting
-        const ray = new BABYLON.Ray(rocket.position, lookDirection);
-        const hit = g.scene.pickWithRay(ray, (mesh) => {
-            // Exclude rocket itself and weapon models
-            if (mesh === g.camera ||
-                        (g.playerMesh && mesh === g.playerMesh) ||
-                        mesh.name === "playerCapsule" ||
-                        mesh.name.startsWith("tracer_") ||
-                        mesh.name.startsWith("impact") ||
-                        mesh.name === "explosion") return false;
-            for (let weaponId in g.weapons) {
-                const weaponData = g.weapons[weaponId];
-                if (weaponData.model && (mesh === weaponData.model || weaponData.model.getChildMeshes().includes(mesh))) {
-                    return false;
-                }
-            }
-            return true;
-        });
-        
-        if (hit && hit.hit && hit.distance < 1) {
-            // Explode
-            if (g.createExplosion) g.createExplosion(rocket.position, explosionRadius, explosionDamage);
-            rocket.dispose();
-            return;
-        }
-        
-        // Check distance from camera
-        const distance = BABYLON.Vector3.Distance(rocket.position, g.camera.position);
-        if (distance > 200) {
-            rocket.dispose();
-            return;
-        }
-        
-        requestAnimationFrame(animateRocket);
-    };
-    
-    animateRocket();
-}
-
 // Shoot function using Babylon.js
 // Original Goal: Handle shooting for all weapon types, manage ammo, create projectiles, perform hit detection with penetration
 // New Implementation: Uses Babylon.js ray casting, removes knockback, preserves penetration mechanics and tracers
 window.game.shoot = function() {
-    console.log("SHOOT FUNCTION CALLED!"); // Debug log
     const g = window.game;
     const weapon = g.weapons[g.currentWeapon];
-    console.log("Current weapon:", g.currentWeapon, "Weapon data:", weapon); // Debug log
     if (!weapon || !g.camera || !g.scene) {
-        console.log("Early return - missing:", { weapon: !!weapon, camera: !!g.camera, scene: !!g.scene }); // Debug log
         return;
     }
 
@@ -352,15 +253,18 @@ window.game.shoot = function() {
 
                 // Create ray with spread using Babylon.js
                 const forward = g.camera.getForwardRay().direction;
+                const right = g.camera.getDirection(BABYLON.Vector3.Right());
+                const up = g.camera.getDirection(BABYLON.Vector3.Up());
+                const direction = forward.add(right.scale(spreadX)).add(up.scale(spreadY)).normalize();
 
-                const muzzlePosition = g.camera.position.clone().add(forward.scale(1.0));
-                g.createBulletTracer(muzzlePosition, forward);
+                const muzzlePosition = g.camera.position.clone().add(direction.scale(1.0));
+                g.createBulletTracer(muzzlePosition, direction);
 
                 const offsetForward = 1.0; // Start the ray slightly in front of the camera
-                const rayStart = g.camera.position.clone().add(forward.scale(offsetForward));
+                const rayStart = g.camera.position.clone().add(direction.scale(offsetForward));
 
                 // Raycast for hit detection using Babylon.js
-                const ray = new BABYLON.Ray(rayStart, forward);
+                const ray = new BABYLON.Ray(rayStart, direction);
                 const hits = g.scene.multiPickWithRay(ray, (mesh) => {
                     // Exclude camera, player, weapon models, bullets, explosions, and impacts
                     if (mesh === g.camera ||
@@ -388,19 +292,19 @@ window.game.shoot = function() {
                     return true;
                 });
 
-                if (hits) {
+                if (hits && hits.length > 0) {
                     let pierceCount = typeof weapon.pierce === 'number' ? weapon.pierce : 1;
                     let piercedObjects = 0;
 
                     for (const hit of hits) {
                         if (piercedObjects >= pierceCount) {
-                            break;
+                            break; // Stop after reaching pierce limit
                         }
 
                         // Check if hit an enemy
                         const enemy = g.enemies && g.enemies.find(e => e.mesh === hit.pickedMesh);
                         if (enemy) {
-                            console.log(`Hit enemy ${enemy.id} with raycast`); // Debug log
+                            console.log(`Raycast pierced enemy: ${enemy.id}`); // Debug log
                             const distance = BABYLON.Vector3.Distance(g.camera.position, hit.pickedPoint);
                             let damage = weapon.damage;
                             if (distance > weapon.minRange && weapon.maxRange > weapon.minRange) { 
@@ -408,10 +312,10 @@ window.game.shoot = function() {
                                 damage *= (1 - dropOffFactor * (1 - weapon.minDamagePercent));
                             }
                             if (g.damageEnemy) g.damageEnemy(enemy, Math.round(damage), hit.pickedPoint);
-                            piercedObjects++;
+                            piercedObjects++; // Increment pierced count only for enemies
                         } else {
-                            console.log("Raycast hit non-enemy object, creating bullet impact"); // Debug log
-                            g.createBulletImpact(hit.pickedPoint, hit.getNormal(true));
+                            console.log(`Raycast hit non-enemy object: ${hit.pickedMesh.name}`); // Debug log
+                            if(g.createBulletImpact) g.createBulletImpact(hit.pickedPoint, hit.getNormal(true));
                             break; // Stop piercing after hitting a wall
                         }
                     }
@@ -435,8 +339,7 @@ window.game.shoot = function() {
                 }, 100);
             }
 
-            const rocketDirection = new BABYLON.Vector3(0, 0, -1);
-            BABYLON.Vector3.TransformNormalToRef(rocketDirection, g.camera.getWorldMatrix(), rocketDirection);
+            const rocketDirection = g.camera.getForwardRay().direction;
             g.createRocket(g.camera.position.clone(), rocketDirection); 
 
             weapon.currentAmmo--;
@@ -513,4 +416,45 @@ window.game.shoot = function() {
             break; 
     } 
     return true; 
+}
+
+// Function to create a weapon model in the game world
+function createWeaponModel(name, scene) {
+    const g = window.game;
+
+    // Placeholder for weapon model creation logic
+    console.log(`Creating weapon model: ${name}`);
+    let weapon = {
+        name: name,
+        model: null,
+        magazineSize: 30,
+        currentAmmo: 30,
+        reloadTime: 1500,
+        fireRate: 100,
+        damage: 10,
+        range: 100,
+        pellets: 1,
+        spread: 0.1,
+        pierce: 1,
+        minRange: 0,
+        maxRange: 100,
+        minDamagePercent: 0.5,
+        maxDamagePercent: 1.0,
+        isReloading: false,
+        muzzleFlash: null,
+        bulletModel: null,
+        // Add other weapon-specific properties here
+    };
+
+    // For now, just create a simple box as the weapon model
+    const box = BABYLON.MeshBuilder.CreateBox(name + "_model", {size: 1}, scene);
+    weapon.model = box;
+
+    // Position the weapon model
+    box.position.y = 0.5;
+
+    // Assign the weapon to the global weapons object
+    g.weapons[name] = weapon;
+
+    return weapon;
 }

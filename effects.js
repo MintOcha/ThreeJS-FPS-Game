@@ -54,7 +54,7 @@ window.game.createRocket = function(position, direction) {
     const weapon = g.weapons[g.WEAPON_ROCKET];
     
     // Create rocket mesh
-    const rocket = weapon.bulletModel.clone();
+    const rocket = weapon.bulletModel.clone("rocket");
     
     // Set position slightly in front of camera
     const rocketStart = direction.clone().scale(0.7).add(position);
@@ -75,15 +75,40 @@ window.game.createRocket = function(position, direction) {
     // Set initial velocity for physics-based movement
     const physicsVelocity = direction.clone().scale(weapon.bulletSpeed);
     rocketAggregate.body.setLinearVelocity(physicsVelocity);
+
+    // Add collision callback
+    rocketAggregate.body.setCollisionCallbackEnabled(true);
+    const collisionObservable = rocketAggregate.body.getCollisionObservable();
+    const collisionObserver = collisionObservable.add((collisionEvent) => {
+        const collidedWithMesh = collisionEvent.collidedAgainst.transformNode;
+        // Prevent immediate self-collision
+        if (collidedWithMesh && (collidedWithMesh.name === "playerCapsule" || collidedWithMesh === g.playerMesh)) {
+            return;
+        }
+
+        if (g.createExplosion) {
+            g.createExplosion(rocket.position, 5); // 5 is radius
+        }
+        
+        // Cleanup
+        rocket.dispose();
+        rocketAggregate.dispose();
+        collisionObservable.remove(collisionObserver);
+        
+        const index = g.bullets.findIndex(b => b.bullet === rocket);
+        if (index !== -1) {
+            g.bullets.splice(index, 1);
+        }
+    });
     
     // Store rocket data for animation
     const rocketData = {
         bullet: rocket,
         aggregate: rocketAggregate,
-        velocity: direction.clone().scale(weapon.bulletSpeed),
         created: Date.now(),
         lifetime: 3000,
-        isRocket: true
+        isRocket: true,
+        collisionObserver: collisionObserver
     };
     
     g.bullets.push(rocketData);
@@ -177,22 +202,28 @@ window.game.updateBullets = function() {
 
     // Loop through bullets array in reverse to safely remove items
     for (let i = g.bullets.length - 1; i >= 0; i--) {
-        const bullet = g.bullets[i];
+        const bulletData = g.bullets[i];
 
-        // Move the bullet
-        bullet.bullet.position.addInPlace(bullet.velocity.scale(dt));
+        // For non-physics bullets (tracers), move them manually
+        if (!bulletData.isRocket) {
+            bulletData.bullet.position.addInPlace(bulletData.velocity.scale(dt));
+        }
         
         // Check lifetime
-        const age = Date.now() - bullet.created;
-        if (age > bullet.lifetime) {
+        const age = Date.now() - bulletData.created;
+        if (age > bulletData.lifetime) {
             // Handle rocket that expired without hitting anything
-            if (bullet.isRocket) {
-                if(g.createExplosion) g.createExplosion(bullet.bullet.position, 5);
+            if (bulletData.isRocket) {
+                if(g.createExplosion) g.createExplosion(bulletData.bullet.position, 5);
+                // Clean up observer
+                if (bulletData.collisionObserver) {
+                    bulletData.aggregate.body.getCollisionObservable().remove(bulletData.collisionObserver);
+                }
             }
             
             // Remove bullet
-            if (bullet.aggregate) bullet.aggregate.dispose();
-            bullet.bullet.dispose();
+            if (bulletData.aggregate) bulletData.aggregate.dispose();
+            bulletData.bullet.dispose();
             g.bullets.splice(i, 1);
         }
     }

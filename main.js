@@ -201,6 +201,41 @@ async function setup() {
             window.game.physicsPlugin = physicsPlugin;
             window.game.scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), physicsPlugin);
             console.log("Using Havok physics");
+
+            // Setup world-level collision observer for all physics events
+            physicsPlugin.onCollisionObservable.add((collisionEvent) => {
+                const g = window.game;
+                if (!g.gameActive || g.isPaused || !g.player) return;
+
+                const bodyA = collisionEvent.collider;
+                const bodyB = collisionEvent.collidedAgainst;
+
+                const meshA = bodyA.transformNode;
+                const meshB = bodyB.transformNode;
+
+                // Check if the player's transform node is involved
+                let otherMesh = null;
+                if (meshA === g.player) {
+                    otherMesh = meshB;
+                } else if (meshB === g.player) {
+                    otherMesh = meshA;
+                }
+
+                // If player collided with something, check what it is
+                if (otherMesh && otherMesh.metadata?.type === "enemyHitbox") {
+                    const enemy = otherMesh.metadata.enemy;
+                    if (enemy && !enemy.isDead) {
+                        const now = Date.now();
+                        // Cooldown to prevent rapid damage from a single touch
+                        if (now - (enemy.lastPlayerContactTime || 0) > 1000) {
+                            console.log(`Player collided with enemy hitbox: ${enemy.mesh.name}`);
+                            if (g.damagePlayer) g.damagePlayer(10);
+                            enemy.lastPlayerContactTime = now;
+                        }
+                    }
+                }
+            });
+
         } catch (e) {
             try {
                 // Fallback to CannonJS if available
@@ -245,6 +280,8 @@ async function setup() {
         window.game.setupControls();
         window.game.createWeaponModels();
         
+        // Collision logic is now handled in the physics plugin's onCollisionObservable above.
+
         // Load sounds
         loadSounds();
         
@@ -259,6 +296,14 @@ async function setup() {
         const homeScreen = document.getElementById('home-screen');
         if (homeScreen) homeScreen.style.display = 'flex';
         
+        // Centralize physics updates in onAfterPhysicsObservable as per the example
+        window.game.scene.onAfterPhysicsObservable.add(() => {
+            const g = window.game;
+            if (g.gameActive && !g.isPaused) {
+                if(g.updatePlayerPhysics) g.updatePlayerPhysics();
+            }
+        });
+
         // Start the render loop
         window.game.engine.runRenderLoop(() => {
             animate();
@@ -304,12 +349,10 @@ function animate() {
     if (g.gameActive && !g.isPaused) {
         // Handle automatic shooting
         if (g.isShooting && g.weapons[g.currentWeapon] && g.weapons[g.currentWeapon].automatic) {
-            console.log("Automatic shooting triggered"); // Debug log
             if(g.shoot) g.shoot();
         }
         
-        // Update player movement and physics
-        if(g.updatePlayerPhysics) g.updatePlayerPhysics();
+        // Player physics is now updated in onAfterPhysicsObservable.
         
         // Update weapons position
         if(g.updateWeaponPosition) g.updateWeaponPosition();
