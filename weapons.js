@@ -24,7 +24,9 @@ window.game.createWeaponModels = async function() {
     
     // Create default cube fallback
     const createCubeFallback = (name) => {
-        return BABYLON.MeshBuilder.CreateBox(name, {width: 0.1, height: 0.1, depth: 0.2}, scene);
+        const box = BABYLON.MeshBuilder.CreateBox(name, {width: 0.1, height: 0.1, depth: 0.2}, scene);
+        console.log(`Created fallback weapon: ${name}`); // Debug
+        return box;
     };
     
     // Load all weapon models
@@ -37,6 +39,8 @@ window.game.createWeaponModels = async function() {
             weaponData.meshUrl, 
             () => createCubeFallback(`weapon_${weaponId}`)
         );
+        
+        console.log(`Loaded weapon ${weaponId}: ${weaponData.model.name}`); // Debug
         
         // Create muzzle flash for projectile weapons
         if (weaponId !== g.WEAPON_MELEE) {
@@ -63,10 +67,18 @@ window.game.createWeaponModels = async function() {
         
         // Hide weapons initially
         weaponData.model.isVisible = false;
+        
+        // Make sure bullet model is also hidden initially
+        bulletModel.isVisible = false;
     }
     
-    // Show current weapon
+    // Show current weapon and ensure it's properly positioned
     g.switchWeapon(g.currentWeapon);
+    
+    // Force an initial weapon position update
+    if (g.updateWeaponPosition) {
+        g.updateWeaponPosition();
+    }
 }
 // Switch weapon function using Babylon.js
 // Original Goal: Hide current weapon, show new weapon, cancel reload, update UI and weapon position
@@ -266,22 +278,44 @@ window.game.shoot = function() {
                 // Raycast for hit detection using Babylon.js
                 const ray = new BABYLON.Ray(rayStart, direction);
                 const hits = g.scene.multiPickWithRay(ray, (mesh) => {
-                    // Exclude camera, player, weapon models, bullets, explosions, and impacts
+                    // Exclude camera, weapon models, bullets, explosions, and impacts
                     if (mesh === g.camera ||
-                        (g.playerMesh && mesh === g.playerMesh) ||
-                        mesh.name === "playerCapsule" ||
                         mesh.name.startsWith("tracer_") ||
                         mesh.name.startsWith("impact") ||
-                        mesh.name === "explosion"
+                        mesh.name === "explosion" ||
+                        mesh.name.startsWith("weapon_") || // Catch weapons by name pattern
+                        mesh.name.startsWith("bullet_") ||  // Catch bullet models
+                        mesh.name.startsWith("muzzleFlash_") // Catch muzzle flashes
                     ) {
+                        console.log(`Excluding by name pattern: ${mesh.name}`); // Debug
                         return false;
                     }
 
-                    // Exclude weapon models
+                    // Exclude weapon models - check all possible weapon meshes
                     for (let weaponId in g.weapons) {
                         const weaponData = g.weapons[weaponId];
-                        if (weaponData.model && (mesh === weaponData.model || weaponData.model.getChildMeshes().includes(mesh))) {
-                            return false;
+                        if (weaponData.model) {
+                            // Check if mesh is the weapon model itself
+                            if (mesh === weaponData.model) {
+                                console.log(`Excluding weapon model: ${mesh.name}`); // Debug
+                                return false;
+                            }
+                            // Check if mesh is a child of the weapon model
+                            const children = weaponData.model.getChildMeshes();
+                            if (children.includes(mesh)) {
+                                console.log(`Excluding weapon child: ${mesh.name}`); // Debug
+                                return false;
+                            }
+                            // Check muzzle flash
+                            if (weaponData.muzzleFlash && mesh === weaponData.muzzleFlash) {
+                                console.log(`Excluding muzzle flash: ${mesh.name}`); // Debug
+                                return false;
+                            }
+                            // Check bullet model
+                            if (weaponData.bulletModel && mesh === weaponData.bulletModel) {
+                                console.log(`Excluding bullet model: ${mesh.name}`); // Debug
+                                return false;
+                            }
                         }
                     }
 
@@ -294,17 +328,17 @@ window.game.shoot = function() {
 
                 if (hits && hits.length > 0) {
                     let pierceCount = typeof weapon.pierce === 'number' ? weapon.pierce : 1;
-                    let piercedObjects = 0;
+                    let objectsHit = 0;
+                    let hitResults = []; // Debug table of what was hit
 
                     for (const hit of hits) {
-                        if (piercedObjects >= pierceCount) {
+                        if (objectsHit >= pierceCount) {
                             break; // Stop after reaching pierce limit
                         }
 
                         // Check if hit an enemy
                         const enemy = g.enemies && g.enemies.find(e => e.mesh === hit.pickedMesh);
                         if (enemy) {
-                            console.log(`Raycast pierced enemy: ${enemy.id}`); // Debug log
                             const distance = BABYLON.Vector3.Distance(g.camera.position, hit.pickedPoint);
                             let damage = weapon.damage;
                             if (distance > weapon.minRange && weapon.maxRange > weapon.minRange) { 
@@ -312,12 +346,30 @@ window.game.shoot = function() {
                                 damage *= (1 - dropOffFactor * (1 - weapon.minDamagePercent));
                             }
                             if (g.damageEnemy) g.damageEnemy(enemy, Math.round(damage), hit.pickedPoint);
-                            piercedObjects++; // Increment pierced count only for enemies
+                            hitResults.push(`Enemy: ${enemy.id} (damage: ${Math.round(damage)})`);
+                            objectsHit++; // Count this as a pierced object
                         } else {
-                            console.log(`Raycast hit non-enemy object: ${hit.pickedMesh.name}`); // Debug log
+                            // Hit a wall or other object - add more detail about what was hit
+                            let objectType = "Unknown";
+                            if (hit.pickedMesh.name.startsWith("wall")) {
+                                objectType = "Wall";
+                            } else if (hit.pickedMesh.name === "ground") {
+                                objectType = "Ground";
+                            } else if (hit.pickedMesh.name.startsWith("weapon_")) {
+                                objectType = "Weapon";
+                            } else {
+                                objectType = "Object";
+                            }
+                            
                             if(g.createBulletImpact) g.createBulletImpact(hit.pickedPoint, hit.getNormal(true));
-                            break; // Stop piercing after hitting a wall
+                            hitResults.push(`${objectType}: ${hit.pickedMesh.name}`);
+                            objectsHit++; // Count walls/objects toward pierce limit too
                         }
+                    }
+
+                    // Debug output
+                    if (hitResults.length > 0) {
+                        console.log(`Pierce hits (${objectsHit}/${pierceCount}):`, hitResults);
                     }
                 }
             }
@@ -385,8 +437,6 @@ window.game.shoot = function() {
             const hit = g.scene.pickWithRay(ray, (mesh) => {
                 // Exclude camera and weapon models
                 if (mesh === g.camera ||
-                        (g.playerMesh && mesh === g.playerMesh) ||
-                        mesh.name === "playerCapsule" ||
                         mesh.name.startsWith("tracer_") ||
                         mesh.name.startsWith("impact") ||
                         mesh.name === "explosion") {

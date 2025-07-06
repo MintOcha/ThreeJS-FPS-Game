@@ -30,7 +30,7 @@ window.game.spawnEnemy = function() {
     if (!g.gameActive) return;
     
     // Create enemy mesh
-    const enemyMesh = BABYLON.MeshBuilder.CreateBox("enemy", {width: 1, height: 2, depth: 1}, g.scene);
+    const enemyMesh = BABYLON.MeshBuilder.CreateBox(`enemy_${Date.now()}`, {width: 1, height: 2, depth: 1}, g.scene);
     const enemyMaterial = new BABYLON.StandardMaterial("enemyMat", g.scene);
     enemyMaterial.diffuseColor = new BABYLON.Color3(1, 0, 0);
     enemyMesh.material = enemyMaterial;

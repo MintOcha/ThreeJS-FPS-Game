@@ -4,8 +4,6 @@ window.game.createBulletTracer = function(startPos, direction) {
     const g = window.game;
     const weapon = g.weapons[g.currentWeapon];
     
-    console.log("Creating bullet tracer"); // Debug log
-    
     // Create bullet model if defined, otherwise create a simple bullet
     let bullet;
     if (weapon.bulletModel) {
@@ -56,8 +54,8 @@ window.game.createRocket = function(position, direction) {
     // Create rocket mesh
     const rocket = weapon.bulletModel.clone("rocket");
     
-    // Set position slightly in front of camera
-    const rocketStart = direction.clone().scale(0.7).add(position);
+    // Set position slightly in front of camera to avoid immediate collision
+    const rocketStart = direction.clone().scale(1.5).add(position);
     rocket.position.copyFrom(rocketStart);
     
     // Orient rocket in direction of travel
@@ -76,16 +74,21 @@ window.game.createRocket = function(position, direction) {
     const physicsVelocity = direction.clone().scale(weapon.bulletSpeed);
     rocketAggregate.body.setLinearVelocity(physicsVelocity);
 
-    // Add collision callback
+    // Add collision callback with a small delay to prevent immediate collision
     rocketAggregate.body.setCollisionCallbackEnabled(true);
     const collisionObservable = rocketAggregate.body.getCollisionObservable();
+    
+    let collisionEnabled = false;
+    // Enable collision detection after a short delay
+    setTimeout(() => {
+        collisionEnabled = true;
+    }, 100);
+    
     const collisionObserver = collisionObservable.add((collisionEvent) => {
+        if (!collisionEnabled) return; // Ignore collisions during startup delay
+        
         const collidedWithMesh = collisionEvent.collidedAgainst.transformNode;
-        // Prevent immediate self-collision
-        if (collidedWithMesh && (collidedWithMesh.name === "playerCapsule" || collidedWithMesh === g.playerMesh)) {
-            return;
-        }
-
+        
         if (g.createExplosion) {
             g.createExplosion(rocket.position, 5); // 5 is radius
         }
@@ -146,7 +149,17 @@ window.game.createExplosion = function(position, radius) {
     }
     
     // Check if player is in blast radius (self-damage)
-    const playerDistance = BABYLON.Vector3.Distance(g.camera.position, position);
+    // Get player position from either playerController or camera
+    let playerPosition;
+    if (g.playerController) {
+        playerPosition = g.playerController.getPosition();
+    } else if (g.playerMesh) {
+        playerPosition = g.playerMesh.position;
+    } else {
+        playerPosition = g.camera.position;
+    }
+    
+    const playerDistance = BABYLON.Vector3.Distance(playerPosition, position);
     if (playerDistance <= radius * 1.2) {
         // Calculate damage based on distance
         const damage = Math.round(20 * (1 - playerDistance / (radius * 1.2)));
@@ -271,19 +284,24 @@ window.game.showDamageNumber = function(amount, position) {
     // Add to damage number container
     document.getElementById('damage-number-container').appendChild(damageDiv);
     
-    // Convert 3D position to screen coordinates
+    // Convert 3D position to screen coordinates using proper viewport
+    const engine = g.engine;
+    const scene = g.scene;
+    const camera = g.camera;
+    
     const screenPosition = BABYLON.Vector3.Project(
         position,
         BABYLON.Matrix.Identity(),
-        g.scene.getTransformMatrix(),
-        g.camera.viewport.toGlobal(g.engine.getRenderWidth(), g.engine.getRenderHeight())
+        scene.getTransformMatrix(),
+        camera.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight())
     );
     
-    const x = screenPosition.x;
-    const y = screenPosition.y;
+    // Ensure coordinates are within screen bounds
+    const x = Math.max(0, Math.min(engine.getRenderWidth(), screenPosition.x));
+    const y = Math.max(0, Math.min(engine.getRenderHeight(), screenPosition.y));
     
-    damageDiv.style.left = `${x}px`;
-    damageDiv.style.top = `${y}px`;
+    damageDiv.style.left = `${x - 10}px`; // Center the text
+    damageDiv.style.top = `${y - 10}px`;
     
     const lastUpdate = Date.now();
     
@@ -388,22 +406,26 @@ window.game.updateEnemyHealthBar = function(enemy) {
     
     // Position health bar above enemy
     const enemyWorldPos = enemy.mesh.position.clone();
-    enemyWorldPos.y += 3.0; // Height above enemy
+    enemyWorldPos.y += 2.5; // Height above enemy (reduced from 3.0)
     
     // Project world position to screen coordinates
+    const engine = g.engine;
+    const scene = g.scene;
+    const camera = g.camera;
+    
     const screenPos = BABYLON.Vector3.Project(
         enemyWorldPos,
         BABYLON.Matrix.Identity(),
-        g.scene.getTransformMatrix(),
-        g.camera.viewport.toGlobal(g.engine.getRenderWidth(), g.engine.getRenderHeight())
+        scene.getTransformMatrix(),
+        camera.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight())
     );
     
-    // Convert to GUI coordinates (0-1 range)
-    const guiX = (screenPos.x / g.engine.getRenderWidth()) * 2 - 1;
-    const guiY = -((screenPos.y / g.engine.getRenderHeight()) * 2 - 1);
+    // Ensure coordinates are within screen bounds and position health bar
+    const x = Math.max(30, Math.min(engine.getRenderWidth() - 30, screenPos.x));
+    const y = Math.max(10, Math.min(engine.getRenderHeight() - 10, screenPos.y));
     
-    healthBar.background.leftInPixels = screenPos.x - 30;
-    healthBar.background.topInPixels = screenPos.y - 4;
+    healthBar.background.leftInPixels = x - 30;
+    healthBar.background.topInPixels = y - 4;
     
     // Show health bar
     healthBar.background.isVisible = true;

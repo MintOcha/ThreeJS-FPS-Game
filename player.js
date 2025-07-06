@@ -45,7 +45,50 @@ window.game.createPlayer = function() {
         g.playerMesh.visibility = 0; // Invisible for FPS view
         g.playerMesh.position.copyFrom(characterPosition);
         
-        console.log("Using PhysicsCharacterController");
+        // Even with PhysicsCharacterController, we need a physics body for collision detection
+        g.playerAggregate = new BABYLON.PhysicsAggregate(
+            g.playerMesh, 
+            BABYLON.PhysicsShapeType.CAPSULE, 
+            { mass: 1 }, 
+            g.scene
+        );
+        
+        // Lock rotation to prevent tipping
+        g.playerAggregate.body.setMassProperties({
+            mass: 1,
+            inertia: new BABYLON.Vector3(0, 0, 0)
+        });
+        
+        // Enable collision callbacks
+        g.playerAggregate.body.setCollisionCallbackEnabled(true);
+        
+        // Setup collision observer for damage
+        const collisionObservable = g.playerAggregate.body.getCollisionObservable();
+        collisionObservable.add((collisionEvent) => {
+            const collidedWith = collisionEvent.collidedAgainst.transformNode;
+            console.log(`Player (CharacterController) collided with: ${collidedWith ? collidedWith.name : 'unknown'}`);
+            
+            // Check if collision is with enemy
+            if (collidedWith && collidedWith.metadata?.type === "enemyHitbox") {
+                const enemy = collidedWith.metadata.enemy;
+                if (enemy && !enemy.isDead) {
+                    const now = Date.now();
+                    // Cooldown to prevent rapid damage from a single touch
+                    if (now - (enemy.lastPlayerContactTime || 0) > 1000) {
+                        console.log(`Player collided with enemy: ${enemy.id}`);
+                        if (g.damagePlayer) g.damagePlayer(10);
+                        enemy.lastPlayerContactTime = now;
+                    }
+                }
+            }
+            
+            // Check for trigger volumes (health pickups, etc.)
+            if (collidedWith && collidedWith.metadata && collidedWith.metadata.isTrigger) {
+                handleTriggerInteraction(collidedWith);
+            }
+        });
+        
+        console.log("Using PhysicsCharacterController with collision detection");
         
     } catch (e) {
         console.log("PhysicsCharacterController not available, using PhysicsAggregate fallback");
@@ -78,7 +121,27 @@ window.game.createPlayer = function() {
         // Setup collision observer for damage
         const collisionObservable = g.playerAggregate.body.getCollisionObservable();
         collisionObservable.add((collisionEvent) => {
-            handlePlayerCollision(collisionEvent);
+            const collidedWith = collisionEvent.collidedAgainst.transformNode;
+            console.log(`Player aggregate collided with: ${collidedWith ? collidedWith.name : 'unknown'}`);
+            
+            // Check if collision is with enemy
+            if (collidedWith && collidedWith.metadata?.type === "enemyHitbox") {
+                const enemy = collidedWith.metadata.enemy;
+                if (enemy && !enemy.isDead) {
+                    const now = Date.now();
+                    // Cooldown to prevent rapid damage from a single touch
+                    if (now - (enemy.lastPlayerContactTime || 0) > 1000) {
+                        console.log(`Player collided with enemy: ${enemy.id}`);
+                        if (g.damagePlayer) g.damagePlayer(10);
+                        enemy.lastPlayerContactTime = now;
+                    }
+                }
+            }
+            
+            // Check for trigger volumes (health pickups, etc.)
+            if (collidedWith && collidedWith.metadata && collidedWith.metadata.isTrigger) {
+                handleTriggerInteraction(collidedWith);
+            }
         });
     }
     
@@ -137,25 +200,6 @@ function setupPointerControls() {
             BABYLON.Quaternion.FromEulerAnglesToRef(0, g.camera.rotation.y, 0, g.characterOrientation);
         }
     });
-}
-
-// Handle collision events
-function handlePlayerCollision(collisionEvent) {
-    const g = window.game;
-    const collidedWith = collisionEvent.collidedAgainst;
-    
-    // Check if collision is with enemy
-    if (collidedWith && collidedWith.name && collidedWith.name.startsWith("enemy")) {
-        // Take damage from enemy contact
-        if (g.damagePlayer) {
-            g.damagePlayer(10); // Base contact damage
-        }
-    }
-    
-    // Check for trigger volumes (health pickups, etc.)
-    if (collidedWith && collidedWith.metadata && collidedWith.metadata.isTrigger) {
-        handleTriggerInteraction(collidedWith);
-    }
 }
 
 // Handle trigger interactions
