@@ -90,11 +90,12 @@ window.game.spawnEnemy = function() {
         isDead: false // Add isDead flag
     };
 
-    // Set metadata on the transformNode (the mesh) for collision and raycast detection
-    enemyMesh.metadata = {
-        type: "enemyHitbox",
-        enemy: enemy
-    };
+    // Create enemy collision object using new collision system
+    enemy.collisionObject = g.CollisionManager.createEnemyCollision(
+        enemyMesh, 
+        enemyAggregate, 
+        enemy
+    );
     
     // Add to enemies array
     g.enemies.push(enemy);

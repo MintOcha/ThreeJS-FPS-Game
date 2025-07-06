@@ -202,58 +202,9 @@ async function setup() {
             window.game.scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), physicsPlugin);
             console.log("Using Havok physics");
 
-            // Setup world-level collision observer for all physics events
-            physicsPlugin.onCollisionObservable.add((collisionEvent) => {
-                const g = window.game;
-                if (!g.gameActive || g.isPaused) return;
-
-                const bodyA = collisionEvent.collider;
-                const bodyB = collisionEvent.collidedAgainst;
-
-                const meshA = bodyA.transformNode;
-                const meshB = bodyB.transformNode;
-
-                // Check if the player's transform node is involved (check both playerMesh and playerController)
-                let playerMesh = null;
-                let otherMesh = null;
-                
-                // Handle both PhysicsCharacterController and PhysicsAggregate cases
-                if ((g.playerMesh && meshA === g.playerMesh) || 
-                    (g.playerController && meshA && meshA.name === "playerCapsule")) {
-                    playerMesh = meshA;
-                    otherMesh = meshB;
-                } else if ((g.playerMesh && meshB === g.playerMesh) || 
-                          (g.playerController && meshB && meshB.name === "playerCapsule")) {
-                    playerMesh = meshB;
-                    otherMesh = meshA;
-                }
-
-                // If player collided with something, check what it is
-                if (playerMesh && otherMesh) {
-                    console.log(`Global collision observer: Player collided with ${otherMesh.name || 'unknown'}`);
-                    
-                    // Check for enemy collision
-                    if (otherMesh.metadata?.type === "enemyHitbox") {
-                        const enemy = otherMesh.metadata.enemy;
-                        if (enemy && !enemy.isDead) {
-                            const now = Date.now();
-                            // Cooldown to prevent rapid damage from a single touch
-                            if (now - (enemy.lastPlayerContactTime || 0) > 1000) {
-                                console.log(`Global observer: Player collided with enemy hitbox: ${enemy.mesh.name}`);
-                                if (g.damagePlayer) g.damagePlayer(10);
-                                enemy.lastPlayerContactTime = now;
-                            }
-                        }
-                    }
-                    
-                    // Check for rocket collision (rockets should damage player on contact)
-                    if (otherMesh.name && otherMesh.name === "rocket") {
-                        console.log("Global observer: Rocket hit player directly - triggering explosion");
-                        // Explosion will be handled by the rocket's own collision observer
-                        // But make sure player gets damaged if they're in blast radius
-                    }
-                }
-            });
+            // Note: Global collision observer is now handled by the CollisionManager system
+            // Each collision object manages its own collision observers
+            console.log("Collision system initialized - using CollisionManager");
 
         } catch (e) {
             try {

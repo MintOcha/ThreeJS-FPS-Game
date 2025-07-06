@@ -54,6 +54,10 @@ window.game.createRocket = function(position, direction) {
     // Create rocket mesh
     const rocket = weapon.bulletModel.clone("rocket");
     
+    // Ensure rocket is visible
+    rocket.isVisible = true;
+    rocket.setEnabled(true);
+    
     // Set position slightly in front of camera to avoid immediate collision
     const rocketStart = direction.clone().scale(1.5).add(position);
     rocket.position.copyFrom(rocketStart);
@@ -74,34 +78,11 @@ window.game.createRocket = function(position, direction) {
     const physicsVelocity = direction.clone().scale(weapon.bulletSpeed);
     rocketAggregate.body.setLinearVelocity(physicsVelocity);
 
-    // Add collision callback with a small delay to prevent immediate collision
-    rocketAggregate.body.setCollisionCallbackEnabled(true);
-    const collisionObservable = rocketAggregate.body.getCollisionObservable();
-    
-    let collisionEnabled = false;
-    // Enable collision detection after a short delay
-    setTimeout(() => {
-        collisionEnabled = true;
-    }, 100);
-    
-    const collisionObserver = collisionObservable.add((collisionEvent) => {
-        if (!collisionEnabled) return; // Ignore collisions during startup delay
-        
-        const collidedWithMesh = collisionEvent.collidedAgainst.transformNode;
-        
-        if (g.createExplosion) {
-            g.createExplosion(rocket.position, 5); // 5 is radius
-        }
-        
-        // Cleanup
-        rocket.dispose();
-        rocketAggregate.dispose();
-        collisionObservable.remove(collisionObserver);
-        
-        const index = g.bullets.findIndex(b => b.bullet === rocket);
-        if (index !== -1) {
-            g.bullets.splice(index, 1);
-        }
+    // Create rocket collision object using new collision system
+    const rocketCollision = g.CollisionManager.createBulletCollision(rocket, rocketAggregate, {
+        isRocket: true,
+        created: Date.now(),
+        lifetime: 3000
     });
     
     // Store rocket data for animation
@@ -111,7 +92,7 @@ window.game.createRocket = function(position, direction) {
         created: Date.now(),
         lifetime: 3000,
         isRocket: true,
-        collisionObserver: collisionObserver
+        collisionObject: rocketCollision
     };
     
     g.bullets.push(rocketData);

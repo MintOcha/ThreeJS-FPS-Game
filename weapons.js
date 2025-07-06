@@ -42,6 +42,13 @@ window.game.createWeaponModels = async function() {
         
         console.log(`Loaded weapon ${weaponId}: ${weaponData.model.name}`); // Debug
         
+        // Create weapon collision object
+        weaponData.collisionObject = g.CollisionManager.createWeaponCollision(
+            weaponData.model, 
+            null, // Weapons don't need physics aggregates
+            { weaponId: weaponId }
+        );
+        
         // Create muzzle flash for projectile weapons
         if (weaponId !== g.WEAPON_MELEE) {
             const muzzleFlash = BABYLON.MeshBuilder.CreateBox(`muzzleFlash_${weaponId}`, {width: 0.15, height: 0.15, depth: 0.15}, scene);
@@ -55,6 +62,12 @@ window.game.createWeaponModels = async function() {
             
             // Position muzzle flash at weapon front
             muzzleFlash.position = new BABYLON.Vector3(0, 0, -1.0);
+            
+            // Create muzzle flash collision object
+            g.CollisionManager.createWeaponCollision(muzzleFlash, null, { 
+                weaponId: weaponId, 
+                isMuzzleFlash: true 
+            });
         }
         
         // Create bullet/projectile model
@@ -64,6 +77,12 @@ window.game.createWeaponModels = async function() {
         bulletMat.emissiveColor = new BABYLON.Color3(0.2, 0.2, 0);
         bulletModel.material = bulletMat;
         weaponData.bulletModel = bulletModel;
+        
+        // Create bullet model collision object
+        g.CollisionManager.createBulletCollision(bulletModel, null, {
+            weaponId: weaponId,
+            isBulletModel: true
+        });
         
         // Hide weapons initially
         weaponData.model.isVisible = false;
@@ -130,7 +149,7 @@ window.game.updateWeaponPosition = function() {
     // Create vectors for weapon positioning in camera space
     let offsetRight = 0.3;  
     let offsetDown = -0.2;  
-    let offsetForward = 0.5; 
+    let offsetForward = -0.5; // Keep this one negative.
     
     // Adjust for ADS
     if (g.isADS) {
@@ -147,13 +166,13 @@ window.game.updateWeaponPosition = function() {
         scale = 0.45; 
         offsetRight *= 0.5;
         offsetDown *= 0.7;
-        offsetForward = -0.15;
+        offsetForward = -0.15; // Keep this one negative.
     }
 
     // Interpolate position for ADS transition
     offsetRight = offsetRight * (1 - g.adsTransition);
     offsetDown = offsetDown * (1 - g.adsTransition) + (-0.1 * g.adsTransition);
-    offsetForward = offsetForward * (1 - g.adsTransition) + (-0.3 * g.adsTransition);
+    offsetForward = offsetForward * (1 - g.adsTransition) + (0.3 * g.adsTransition); // Positive forward
     
     // Apply position based on camera's orientation using Babylon.js
     const forward = new BABYLON.Vector3(0, 0, -1);
@@ -272,57 +291,21 @@ window.game.shoot = function() {
                 const muzzlePosition = g.camera.position.clone().add(direction.scale(1.0));
                 g.createBulletTracer(muzzlePosition, direction);
 
-                const offsetForward = 1.0; // Start the ray slightly in front of the camera
-                const rayStart = g.camera.position.clone().add(direction.scale(offsetForward));
-
-                // Raycast for hit detection using Babylon.js
-                const ray = new BABYLON.Ray(rayStart, direction);
+                // Raycast for hit detection using Babylon.js - start from camera position like original
+                const ray = new BABYLON.Ray(g.camera.position, direction);
                 const hits = g.scene.multiPickWithRay(ray, (mesh) => {
-                    // Exclude camera, weapon models, bullets, explosions, and impacts
-                    if (mesh === g.camera ||
-                        mesh.name.startsWith("tracer_") ||
-                        mesh.name.startsWith("impact") ||
-                        mesh.name === "explosion" ||
-                        mesh.name.startsWith("weapon_") || // Catch weapons by name pattern
-                        mesh.name.startsWith("bullet_") ||  // Catch bullet models
-                        mesh.name.startsWith("muzzleFlash_") // Catch muzzle flashes
-                    ) {
-                        console.log(`Excluding by name pattern: ${mesh.name}`); // Debug
+                    // Use collision manager to check if mesh should be excluded
+                    if (g.CollisionManager.shouldExcludeFromRaycast(mesh)) {
+                        return false;
+                    }
+                    
+                    // Exclude camera
+                    if (mesh === g.camera) {
+                        console.log(`Excluding camera from raycast`);
                         return false;
                     }
 
-                    // Exclude weapon models - check all possible weapon meshes
-                    for (let weaponId in g.weapons) {
-                        const weaponData = g.weapons[weaponId];
-                        if (weaponData.model) {
-                            // Check if mesh is the weapon model itself
-                            if (mesh === weaponData.model) {
-                                console.log(`Excluding weapon model: ${mesh.name}`); // Debug
-                                return false;
-                            }
-                            // Check if mesh is a child of the weapon model
-                            const children = weaponData.model.getChildMeshes();
-                            if (children.includes(mesh)) {
-                                console.log(`Excluding weapon child: ${mesh.name}`); // Debug
-                                return false;
-                            }
-                            // Check muzzle flash
-                            if (weaponData.muzzleFlash && mesh === weaponData.muzzleFlash) {
-                                console.log(`Excluding muzzle flash: ${mesh.name}`); // Debug
-                                return false;
-                            }
-                            // Check bullet model
-                            if (weaponData.bulletModel && mesh === weaponData.bulletModel) {
-                                console.log(`Excluding bullet model: ${mesh.name}`); // Debug
-                                return false;
-                            }
-                        }
-                    }
-
-                    // Exclude bullets and explosions from the global arrays as well
-                    if (g.bullets && g.bullets.some(b => b.bullet === mesh)) return false;
-                    if (g.explosions && g.explosions.some(e => e.mesh === mesh)) return false;
-
+                    console.log(`Including in raycast: ${mesh.name}`); // Debug what gets included
                     return true;
                 });
 
@@ -435,24 +418,15 @@ window.game.shoot = function() {
             const meleeRange = weapon.range;
             const ray = new BABYLON.Ray(g.camera.position, meleeDirection);
             const hit = g.scene.pickWithRay(ray, (mesh) => {
-                // Exclude camera and weapon models
-                if (mesh === g.camera ||
-                        mesh.name.startsWith("tracer_") ||
-                        mesh.name.startsWith("impact") ||
-                        mesh.name === "explosion") {
+                // Use CollisionManager for proper filtering
+                if (g.CollisionManager.shouldExcludeFromRaycast(mesh)) {
                     return false;
                 }
                 
-                for (let weaponId in g.weapons) {
-                    const weaponData = g.weapons[weaponId];
-                    if (weaponData.model && (mesh === weaponData.model || weaponData.model.getChildMeshes().includes(mesh))) {
-                        return false;
-                    }
+                // Exclude camera specifically
+                if (mesh === g.camera) {
+                    return false;
                 }
-                
-                // Exclude bullets and explosions
-                if (g.bullets && g.bullets.some(b => b.bullet === mesh)) return false;
-                if (g.explosions && g.explosions.some(e => e.mesh === mesh)) return false;
                 
                 return true;
             });

@@ -59,34 +59,12 @@ window.game.createPlayer = function() {
             inertia: new BABYLON.Vector3(0, 0, 0)
         });
         
-        // Enable collision callbacks
-        g.playerAggregate.body.setCollisionCallbackEnabled(true);
-        
-        // Setup collision observer for damage
-        const collisionObservable = g.playerAggregate.body.getCollisionObservable();
-        collisionObservable.add((collisionEvent) => {
-            const collidedWith = collisionEvent.collidedAgainst.transformNode;
-            console.log(`Player (CharacterController) collided with: ${collidedWith ? collidedWith.name : 'unknown'}`);
-            
-            // Check if collision is with enemy
-            if (collidedWith && collidedWith.metadata?.type === "enemyHitbox") {
-                const enemy = collidedWith.metadata.enemy;
-                if (enemy && !enemy.isDead) {
-                    const now = Date.now();
-                    // Cooldown to prevent rapid damage from a single touch
-                    if (now - (enemy.lastPlayerContactTime || 0) > 1000) {
-                        console.log(`Player collided with enemy: ${enemy.id}`);
-                        if (g.damagePlayer) g.damagePlayer(10);
-                        enemy.lastPlayerContactTime = now;
-                    }
-                }
-            }
-            
-            // Check for trigger volumes (health pickups, etc.)
-            if (collidedWith && collidedWith.metadata && collidedWith.metadata.isTrigger) {
-                handleTriggerInteraction(collidedWith);
-            }
-        });
+        // Create player collision object using new collision system
+        g.playerCollision = g.CollisionManager.createPlayerCollision(
+            g.playerMesh, 
+            g.playerAggregate, 
+            { controller: g.playerController }
+        );
         
         console.log("Using PhysicsCharacterController with collision detection");
         
@@ -115,34 +93,12 @@ window.game.createPlayer = function() {
             inertia: new BABYLON.Vector3(0, 0, 0)
         });
         
-        // Enable collision callbacks
-        g.playerAggregate.body.setCollisionCallbackEnabled(true);
-        
-        // Setup collision observer for damage
-        const collisionObservable = g.playerAggregate.body.getCollisionObservable();
-        collisionObservable.add((collisionEvent) => {
-            const collidedWith = collisionEvent.collidedAgainst.transformNode;
-            console.log(`Player aggregate collided with: ${collidedWith ? collidedWith.name : 'unknown'}`);
-            
-            // Check if collision is with enemy
-            if (collidedWith && collidedWith.metadata?.type === "enemyHitbox") {
-                const enemy = collidedWith.metadata.enemy;
-                if (enemy && !enemy.isDead) {
-                    const now = Date.now();
-                    // Cooldown to prevent rapid damage from a single touch
-                    if (now - (enemy.lastPlayerContactTime || 0) > 1000) {
-                        console.log(`Player collided with enemy: ${enemy.id}`);
-                        if (g.damagePlayer) g.damagePlayer(10);
-                        enemy.lastPlayerContactTime = now;
-                    }
-                }
-            }
-            
-            // Check for trigger volumes (health pickups, etc.)
-            if (collidedWith && collidedWith.metadata && collidedWith.metadata.isTrigger) {
-                handleTriggerInteraction(collidedWith);
-            }
-        });
+        // Create player collision object using new collision system
+        g.playerCollision = g.CollisionManager.createPlayerCollision(
+            g.playerMesh, 
+            g.playerAggregate, 
+            { useFallback: true }
+        );
     }
     
     // Setup camera to follow player
@@ -200,17 +156,6 @@ function setupPointerControls() {
             BABYLON.Quaternion.FromEulerAnglesToRef(0, g.camera.rotation.y, 0, g.characterOrientation);
         }
     });
-}
-
-// Handle trigger interactions
-function handleTriggerInteraction(triggerMesh) {
-    const g = window.game;
-    
-    if (triggerMesh.metadata.type === "healthPickup") {
-        g.playerHealth = Math.min(100, g.playerHealth + 25);
-        if (g.updateHealthBar) g.updateHealthBar();
-        triggerMesh.dispose(); // Remove pickup
-    }
 }
 
 // Modern physics-based character movement update
