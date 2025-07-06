@@ -31,6 +31,7 @@ class CollisionObject {
         // Enable collision callbacks if aggregate exists
         if (aggregate && aggregate.body) {
             aggregate.body.setCollisionCallbackEnabled(true);
+            console.log(`Collision enabled for ${type}: ${mesh ? mesh.name : 'unknown'}`);
         }
     }
     
@@ -68,30 +69,9 @@ class PlayerCollision extends CollisionObject {
     }
     
     setupPlayerCollisions() {
-        this.collisionObserver = this.setupCollisionObserver((collisionEvent) => {
-            const otherBody = collisionEvent.collidedAgainst;
-            const otherMesh = otherBody.transformNode;
-            
-            if (otherMesh && otherMesh.metadata) {
-                const otherCollisionObject = otherMesh.metadata.collisionObject;
-                
-                if (otherCollisionObject) {
-                    switch (otherCollisionObject.type) {
-                        case window.game.COLLISION_TYPES.ENEMY:
-                            this.handleEnemyCollision(otherCollisionObject);
-                            break;
-                        case window.game.COLLISION_TYPES.PICKUP:
-                            this.handlePickupCollision(otherCollisionObject);
-                            break;
-                        case window.game.COLLISION_TYPES.BULLET:
-                            if (otherCollisionObject.data.isRocket) {
-                                // Rocket collision handled by rocket itself
-                            }
-                            break;
-                    }
-                }
-            }
-        });
+        // For character controller, we don't use standard collision callbacks
+        // Enemy collisions are handled manually in the player update loop
+        console.log("Player collision system set up (manual detection mode)");
     }
     
     handleEnemyCollision(enemyCollision) {
@@ -171,6 +151,13 @@ class BulletCollision extends CollisionObject {
     }
 }
 
+// World collision object (for walls, ground, etc.)
+class WorldCollision extends CollisionObject {
+    constructor(mesh, aggregate, worldData) {
+        super(mesh, aggregate, window.game.COLLISION_TYPES.WORLD, worldData);
+    }
+}
+
 // Collision manager
 window.game.CollisionManager = {
     // Create collision objects
@@ -188,6 +175,10 @@ window.game.CollisionManager = {
     
     createBulletCollision(mesh, aggregate, bulletData) {
         return new BulletCollision(mesh, aggregate, bulletData);
+    },
+    
+    createWorldCollision(mesh, aggregate, worldData) {
+        return new WorldCollision(mesh, aggregate, worldData);
     },
     
     // Check if mesh should be excluded from raycast
@@ -232,4 +223,5 @@ window.game.PlayerCollision = PlayerCollision;
 window.game.EnemyCollision = EnemyCollision;
 window.game.WeaponCollision = WeaponCollision;
 window.game.BulletCollision = BulletCollision;
+window.game.WorldCollision = WorldCollision;
 window.game.CollisionObject = CollisionObject;

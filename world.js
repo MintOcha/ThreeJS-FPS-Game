@@ -37,6 +37,9 @@ window.game.createWorld = function() {
     const groundAggregate = new BABYLON.PhysicsAggregate(ground, BABYLON.PhysicsShapeType.BOX, 
         { mass: 0, restitution: 0.1, friction: 0.8 }, g.scene);
     
+    // Add collision object to ground
+    g.CollisionManager.createWorldCollision(ground, groundAggregate, { type: "ground", name: "ground" });
+    
     // Wall material
     const wallMaterial = new BABYLON.StandardMaterial("wallMat", g.scene);
     wallMaterial.diffuseColor = new BABYLON.Color3(0, 0.53, 1);
@@ -78,6 +81,11 @@ window.game.createWall = function(x, y, z, width, height, depth, material) {
     // Add physics using modern PhysicsAggregate
     const wallAggregate = new BABYLON.PhysicsAggregate(wall, BABYLON.PhysicsShapeType.BOX, 
         { mass: 0, restitution: 0.1, friction: 0.8 }, g.scene);
+    
+    // Add collision object to wall
+    g.CollisionManager.createWorldCollision(wall, wallAggregate, { type: "wall", name: wall.name });
+    
+    return wall;
     
     return wall;
 };

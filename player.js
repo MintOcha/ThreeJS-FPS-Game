@@ -45,28 +45,18 @@ window.game.createPlayer = function() {
         g.playerMesh.visibility = 0; // Invisible for FPS view
         g.playerMesh.position.copyFrom(characterPosition);
         
-        // Even with PhysicsCharacterController, we need a physics body for collision detection
-        g.playerAggregate = new BABYLON.PhysicsAggregate(
-            g.playerMesh, 
-            BABYLON.PhysicsShapeType.CAPSULE, 
-            { mass: 1 }, 
-            g.scene
-        );
+        // For PhysicsCharacterController, we DON'T need a separate PhysicsAggregate
+        // The character controller handles physics internally
+        // We'll use a different approach for collision detection with enemies
         
-        // Lock rotation to prevent tipping
-        g.playerAggregate.body.setMassProperties({
-            mass: 1,
-            inertia: new BABYLON.Vector3(0, 0, 0)
-        });
-        
-        // Create player collision object using new collision system
+        // Create player collision object using new collision system (without aggregate)
         g.playerCollision = g.CollisionManager.createPlayerCollision(
             g.playerMesh, 
-            g.playerAggregate, 
+            null, // No aggregate needed for character controller
             { controller: g.playerController }
         );
         
-        console.log("Using PhysicsCharacterController with collision detection");
+        console.log("Using PhysicsCharacterController with manual collision detection");
         
     } catch (e) {
         console.log("PhysicsCharacterController not available, using PhysicsAggregate fallback");
@@ -99,6 +89,8 @@ window.game.createPlayer = function() {
             g.playerAggregate, 
             { useFallback: true }
         );
+        
+        console.log("Using PhysicsAggregate fallback with standard collision detection");
     }
     
     // Setup camera to follow player
@@ -178,6 +170,11 @@ window.game.updatePlayerPhysics = function() {
     
     // Update camera to follow player
     updateCameraFollow();
+    
+    // Check for enemy collisions manually since character controller doesn't use standard collision callbacks
+    if (g.playerController) {
+        checkEnemyCollisions();
+    }
 };
 
 // Update input direction from movement keys
@@ -621,3 +618,28 @@ window.game.endSlide = function() {
     g.isSliding = false;
     console.log("Ended sliding");
 };
+
+// Check for enemy collisions manually (for character controller)
+function checkEnemyCollisions() {
+    const g = window.game;
+    if (!g.playerController || !g.enemies) return;
+    
+    const playerPos = g.playerController.getPosition();
+    const collisionRadius = 0.8; // Player radius + enemy radius
+    
+    for (const enemy of g.enemies) {
+        if (enemy.isDead) continue;
+        
+        const distance = BABYLON.Vector3.Distance(playerPos, enemy.mesh.position);
+        if (distance < collisionRadius) {
+            const now = Date.now();
+            if (now - (enemy.lastPlayerContactTime || 0) > 1000) {
+                console.log(`Player manually collided with enemy: ${enemy.id}`);
+                if (g.damagePlayer) {
+                    g.damagePlayer(10);
+                }
+                enemy.lastPlayerContactTime = now;
+            }
+        }
+    }
+}

@@ -172,8 +172,7 @@ window.game.updateWeaponPosition = function() {
     // Interpolate position for ADS transition
     offsetRight = offsetRight * (1 - g.adsTransition);
     offsetDown = offsetDown * (1 - g.adsTransition) + (-0.1 * g.adsTransition);
-    offsetForward = offsetForward * (1 - g.adsTransition) + (0.3 * g.adsTransition); // Positive forward
-    
+    offsetForward = offsetForward * (1 - g.adsTransition) + (-0.3 * g.adsTransition); // KEEP as negative
     // Apply position based on camera's orientation using Babylon.js
     const forward = new BABYLON.Vector3(0, 0, -1);
     BABYLON.Vector3.TransformNormalToRef(forward, g.camera.getWorldMatrix(), forward);
