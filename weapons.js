@@ -287,7 +287,7 @@ window.game.shoot = function() {
                 const up = g.camera.getDirection(BABYLON.Vector3.Up());
                 const direction = forward.add(right.scale(spreadX)).add(up.scale(spreadY)).normalize();
 
-                const muzzlePosition = g.camera.position.clone().add(direction.scale(1.0));
+                const muzzlePosition = g.camera.position.clone().add(direction.scale(0.2));
                 g.createBulletTracer(muzzlePosition, direction);
 
                 // Raycast for hit detection using Babylon.js - start from camera position like original
