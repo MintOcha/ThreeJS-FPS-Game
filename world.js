@@ -86,6 +86,4 @@ window.game.createWall = function(x, y, z, width, height, depth, material) {
     g.CollisionManager.createWorldCollision(wall, wallAggregate, { type: "wall", name: wall.name });
     
     return wall;
-    
-    return wall;
 };

@@ -171,10 +171,8 @@ window.game.updatePlayerPhysics = function() {
     // Update camera to follow player
     updateCameraFollow();
     
-    // Check for enemy collisions manually since character controller doesn't use standard collision callbacks
-    if (g.playerController) {
-        checkEnemyCollisions();
-    }
+    // Check for enemy collisions manually (works for both character controller and physics aggregate)
+    checkEnemyCollisions();
 };
 
 // Update input direction from movement keys
@@ -622,19 +620,16 @@ window.game.endSlide = function() {
 // Check for enemy collisions manually (for character controller)
 function checkEnemyCollisions() {
     const g = window.game;
-    if (!g.playerController || !g.enemies) return;
-    
-    const playerPos = g.playerController.getPosition();
-    const collisionRadius = 0.8; // Player radius + enemy radius
+    if (!g.playerMesh || !g.enemies) return;
     
     for (const enemy of g.enemies) {
         if (enemy.isDead) continue;
         
-        const distance = BABYLON.Vector3.Distance(playerPos, enemy.mesh.position);
-        if (distance < collisionRadius) {
+        // Use Babylon.js intersectsMesh for precise collision detection
+        if (g.playerMesh.intersectsMesh(enemy.mesh, false)) {
             const now = Date.now();
             if (now - (enemy.lastPlayerContactTime || 0) > 1000) {
-                console.log(`Player manually collided with enemy: ${enemy.id}`);
+                console.log(`Player intersected with enemy: ${enemy.id}`);
                 if (g.damagePlayer) {
                     g.damagePlayer(10);
                 }

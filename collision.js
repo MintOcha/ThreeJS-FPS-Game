@@ -69,9 +69,36 @@ class PlayerCollision extends CollisionObject {
     }
     
     setupPlayerCollisions() {
-        // For character controller, we don't use standard collision callbacks
-        // Enemy collisions are handled manually in the player update loop
-        console.log("Player collision system set up (manual detection mode)");
+        // Check if we have an aggregate (fallback mode) or using character controller
+        if (this.aggregate && this.aggregate.body) {
+            // Standard collision detection for PhysicsAggregate fallback
+            this.collisionObserver = this.setupCollisionObserver((collisionEvent) => {
+                const otherBody = collisionEvent.collidedAgainst;
+                const otherMesh = otherBody.transformNode;
+                
+                if (otherMesh && otherMesh.metadata && otherMesh.metadata.collisionObject) {
+                    const otherCollisionObject = otherMesh.metadata.collisionObject;
+                    
+                    switch (otherCollisionObject.type) {
+                        case window.game.COLLISION_TYPES.ENEMY:
+                            this.handleEnemyCollision(otherCollisionObject);
+                            break;
+                        case window.game.COLLISION_TYPES.PICKUP:
+                            this.handlePickupCollision(otherCollisionObject);
+                            break;
+                        case window.game.COLLISION_TYPES.BULLET:
+                            if (otherCollisionObject.data.isRocket) {
+                                // Rocket collision handled by rocket itself
+                            }
+                            break;
+                    }
+                }
+            });
+            console.log("Player collision system set up (PhysicsAggregate mode)");
+        } else {
+            // Character controller mode - collision handled manually via intersectsMesh
+            console.log("Player collision system set up (manual intersectsMesh mode)");
+        }
     }
     
     handleEnemyCollision(enemyCollision) {
