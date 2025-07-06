@@ -1,6 +1,6 @@
 // Effects module (bullets, explosions, damage numbers) for Babylon.js
 
-window.game.createBulletTracer = function(direction) {
+window.game.createBulletTracer = function(startPos, direction) {
     const g = window.game;
     const weapon = g.weapons[g.currentWeapon];
     
@@ -12,7 +12,7 @@ window.game.createBulletTracer = function(direction) {
         bullet = weapon.bulletModel.createInstance(`tracer_${Date.now()}`);
     } else {
         // Create a simple bullet mesh as fallback
-        bullet = BABYLON.MeshBuilder.CreateBox(`tracer_${Date.now()}`, 
+        bullet = BABYLON.MeshBuilder.CreateBox(`tracer_${Date.now()}`,
             {width: 0.05, height: 0.05, depth: 0.2}, g.scene);
         const bulletMat = new BABYLON.StandardMaterial(`tracerMat_${Date.now()}`, g.scene);
         bulletMat.diffuseColor = new BABYLON.Color3(1, 1, 0); // Yellow tracer
@@ -20,40 +20,26 @@ window.game.createBulletTracer = function(direction) {
         bullet.material = bulletMat;
     }
     
-    // Calculate muzzle position - always use camera position for reliability
-    const muzzlePosition = g.camera.position.clone();
-    const forwardOffset = direction.clone().scale(0.5); // Small offset in front of camera
-    muzzlePosition.addInPlace(forwardOffset);
-    
     // For tracer effect, make the bullet longer in its movement direction
     if (g.currentWeapon !== g.WEAPON_ROCKET) {
         // Scale bullet to be longer for tracer effect
         bullet.scaling.z = 3;
     }
     
-    // Set bullet position at muzzle
-    bullet.position.copyFrom(muzzlePosition);
+    // Set bullet position at the calculated start position
+    bullet.position.copyFrom(startPos);
     
     // Point bullet in direction of travel
-    const targetPos = muzzlePosition.add(direction.scale(10));
+    const targetPos = startPos.clone().add(direction.scale(10));
     bullet.lookAt(targetPos);
     
     // Add bullet to scene
     bullet.setParent(null);
     bullet.setEnabled(true);
     
-    // Add DYNAMIC physics to bullet for collision detection
-    const bulletAggregate = new BABYLON.PhysicsAggregate(bullet, BABYLON.PhysicsShapeType.BOX, 
-        { mass: 0.1, restitution: 0, friction: 0 }, g.scene);
-    
-    // Set initial velocity for physics-based movement
-    const physicsVelocity = direction.clone().scale(weapon.bulletSpeed);
-    bulletAggregate.body.setLinearVelocity(physicsVelocity);
-    
     // Store bullet data for animation
     const bulletData = {
         bullet: bullet,
-        aggregate: bulletAggregate,
         velocity: direction.clone().scale(weapon.bulletSpeed),
         created: Date.now(),
         // Lifetime depends on weapon type
@@ -187,68 +173,14 @@ window.game.createBulletImpact = function(position, normal) {
 
 window.game.updateBullets = function() {
     const g = window.game;
+    const dt = g.engine.getDeltaTime() / 1000;
+
     // Loop through bullets array in reverse to safely remove items
     for (let i = g.bullets.length - 1; i >= 0; i--) {
         const bullet = g.bullets[i];
-        
-        // Check for collision using physics aggregate
-        if (bullet.aggregate) {
-            // Use physics collision events
-            const hitInfo = bullet.aggregate.body.getCollisionObservable();
-            
-            // For rockets, check collision with world geometry
-            if (bullet.isRocket) {
-                // Use a raycast to detect imminent collision
-                const ray = new BABYLON.Ray(bullet.bullet.position, bullet.aggregate.body.getLinearVelocity().normalize());
-                const hit = g.scene.pickWithRay(ray, (mesh) => {
-                    // Ignore bullets, weapons, player, and enemies
-                    if (mesh === g.playerPhysicsBody) return false;
-                    if (g.bullets.some(b => b.bullet === mesh)) return false;
-                    if (g.enemies.some(e => e.mesh === mesh)) return false;
-                    if (Object.values(g.weapons).some(w => w.model && w.model.getChildMeshes().includes(mesh))) return false;
-                    if (mesh === bullet.bullet) return false;
-                    return true;
-                });
-                
-                if (hit.hit && hit.distance < 1.0) {
-                    // Explosion at hit point
-                    if(g.createExplosion) g.createExplosion(hit.pickedPoint, 5);
-                    
-                    // Remove rocket
-                    bullet.aggregate.dispose();
-                    bullet.bullet.dispose();
-                    g.bullets.splice(i, 1);
-                    continue;
-                }
-            } else {
-                // For regular bullets, check collision with enemies and walls
-                const ray = new BABYLON.Ray(bullet.bullet.position, bullet.aggregate.body.getLinearVelocity().normalize());
-                const hit = g.scene.pickWithRay(ray, (mesh) => {
-                    // Only hit enemies and world geometry
-                    return g.enemies.some(e => e.mesh === mesh) || 
-                           (mesh.name && (mesh.name.includes('ground') || mesh.name.includes('wall')));
-                });
-                
-                if (hit.hit && hit.distance < 0.5) {
-                    // Check if we hit an enemy
-                    const hitEnemy = g.enemies.find(e => e.mesh === hit.pickedMesh);
-                    if (hitEnemy) {
-                        // Damage enemy
-                        const weapon = g.weapons[g.currentWeapon];
-                        if(g.damageEnemy) g.damageEnemy(hitEnemy, weapon.damage, hit.pickedPoint);
-                    } else {
-                        // Hit world geometry - create bullet impact
-                        if(g.createBulletImpact) g.createBulletImpact(hit.pickedPoint, hit.getNormal(true));
-                    }
-                    
-                    // Remove bullet
-                    bullet.aggregate.dispose();
-                    bullet.bullet.dispose();
-                    g.bullets.splice(i, 1);
-                    continue;
-                }
-            }
-        }
+
+        // Move the bullet
+        bullet.bullet.position.addInPlace(bullet.velocity.scale(dt));
         
         // Check lifetime
         const age = Date.now() - bullet.created;
