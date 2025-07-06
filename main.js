@@ -268,7 +268,7 @@ async function setup() {
     // Collision logic is now handled in the physics plugin's onCollisionObservable above.
 
     // Load sounds
-    loadSounds();
+    await loadSounds();
 
     // Setup window resize handling
     window.addEventListener(
@@ -305,40 +305,39 @@ async function setup() {
 }
 
 // Load game sounds
-function loadSounds() {
+async function loadSounds() {
   try {
-    window.game.sounds.hit = new BABYLON.Sound(
+    // Create and initialize the audio engine
+    const audioEngine = await BABYLON.CreateAudioEngineAsync();
+    window.game.audioEngine = audioEngine;
+    
+    // Load all sound files
+    window.game.sounds.hit = await BABYLON.CreateSoundAsync(
       "hit",
-      "hit.mp3",
-      window.game.scene,
-      null,
-      {
-        loop: false,
-        autoplay: false,
-      },
+      "hit.mp3"
     );
-    window.game.sounds.reload = new BABYLON.Sound(
-      "reload",
-      "reload.mp3",
-      window.game.scene,
-      null,
-      {
-        loop: false,
-        autoplay: false,
-      },
+    
+    window.game.sounds.reload = await BABYLON.CreateSoundAsync(
+      "reload", 
+      "reload.mp3"
     );
-    window.game.sounds.shoot = new BABYLON.Sound(
+    
+    window.game.sounds.shoot = await BABYLON.CreateSoundAsync(
       "shoot",
-      "shoot.mp3",
-      window.game.scene,
-      null,
-      {
-        loop: false,
-        autoplay: false,
-      },
+      "shoot.mp3"
     );
+    
+    // Wait until audio engine is ready to play sounds
+    await audioEngine.unlockAsync();
+    
+    console.log("All sounds loaded and audio engine unlocked");
   } catch (error) {
     console.warn("Could not load some sound files:", error);
+    
+    // Create fallback silent sounds so the game doesn't crash
+    window.game.sounds.hit = { play: () => {} };
+    window.game.sounds.reload = { play: () => {} };
+    window.game.sounds.shoot = { play: () => {} };
   }
 }
 
