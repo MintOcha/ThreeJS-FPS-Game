@@ -14,11 +14,17 @@ window.game.waveCleared = function() {
         }, 3000);
     }
     
-    // Start next wave after delay
-    g.isWaveTransition = true;
+    // Clear any existing wave timer
+    if (g.waveTimer) {
+        clearTimeout(g.waveTimer);
+        g.waveTimer = null;
+    }
     
-    // Wait a bit longer before starting next wave
-    setTimeout(() => {
+    // Start next wave timer immediately (30 seconds)
+    g.isWaveTransition = true;
+    g.waveStartTime = Date.now();
+    
+    g.waveTimer = setTimeout(() => {
         g.isWaveTransition = false;
         window.game.startNextWave(); 
     }, g.waveDelay);
@@ -86,8 +92,8 @@ window.game.spawnEnemy = function() {
     // Set motion type to dynamic so enemies can move
     enemyAggregate.body.setMotionType(BABYLON.PhysicsMotionType.DYNAMIC);
     
-    // Set linear damping to prevent sliding
-    enemyAggregate.body.setLinearDamping(0.5);
+    // Set linear damping to prevent sliding (reduced for better responsiveness)
+    enemyAggregate.body.setLinearDamping(0.2);
     
     // Lock rotation to prevent tipping over
     enemyAggregate.body.setMassProperties({
@@ -119,7 +125,17 @@ window.game.spawnEnemy = function() {
         speed: 0.05,
         attackCooldown: 0,
         lastAttackTime: 0,
-        isDead: false // Add isDead flag
+        isDead: false, // Add isDead flag
+        // Pathfinding properties
+        path: [],
+        pathIndex: 0,
+        lastPathUpdate: Date.now() - Math.random() * 800, // Random initial offset
+        pathUpdateInterval: 800 + Math.random() * 400, // Stagger updates (800-1200ms)
+        currentTarget: null,
+        stuckTimer: 0,
+        lastPosition: new BABYLON.Vector3(),
+        stuckThreshold: 0.1,
+        stuckTimeout: 3000 // 3 seconds before recalculating path
     };
 
     // Create enemy collision object using new collision system
@@ -141,25 +157,93 @@ window.game.updateEnemies = function() {
             enemy.attackCooldown -= g.deltaTime;
         }
         
-        // Move towards player using physics
+        // Move towards player using pathfinding
         if (!g.camera) return;
         
         // Get player position from camera (since player follows camera)
         const playerPosition = g.camera.position;
+        const currentTime = Date.now();
         
-        const direction = playerPosition.subtract(enemy.mesh.position);
-        direction.y = 0; // Keep enemy on ground
+        // Check if enemy is stuck
+        const currentPosition = enemy.mesh.position;
+        const distanceMoved = BABYLON.Vector3.Distance(currentPosition, enemy.lastPosition);
         
-        // Only move if there's a significant distance
-        if (direction.length() > 0.1) {
-            direction.normalize();
+        if (distanceMoved < enemy.stuckThreshold) {
+            enemy.stuckTimer += g.deltaTime;
+        } else {
+            enemy.stuckTimer = 0;
+            enemy.lastPosition.copyFrom(currentPosition);
+        }
+        
+        // Update path if needed (interval-based or if stuck)
+        const shouldUpdatePath = (
+            currentTime - enemy.lastPathUpdate > enemy.pathUpdateInterval ||
+            enemy.stuckTimer > enemy.stuckTimeout ||
+            enemy.path.length === 0
+        );
+        
+        if (shouldUpdatePath && g.PathfindingManager) {
+            const newPath = g.PathfindingManager.findPath(currentPosition, playerPosition);
+            if (newPath.length > 0) {
+                enemy.path = newPath;
+                enemy.pathIndex = 0;
+                enemy.lastPathUpdate = currentTime;
+                enemy.stuckTimer = 0;
+                
+                // Debug visualization if enabled
+                if (g.PathfindingManager.debugVisualizationEnabled) {
+                    g.PathfindingManager.debugVisualizePath(enemy.path, enemy.id);
+                }
+            }
+        }
+        
+        // Follow the path
+        if (enemy.path.length > 0 && enemy.pathIndex < enemy.path.length) {
+            const targetWaypoint = enemy.path[enemy.pathIndex];
+            const direction = targetWaypoint.clone().subtract(currentPosition);
+            direction.y = 0; // Keep enemy on ground
             
-            // Apply force towards player
-            const force = direction.scale(enemy.speed * 200); // Further increased force
-            enemy.aggregate.body.applyForce(force, enemy.mesh.position);
+            const distanceToWaypoint = direction.length();
             
-            // Make enemy face player
-            enemy.mesh.lookAt(new BABYLON.Vector3(playerPosition.x, enemy.mesh.position.y, playerPosition.z));
+            // Check if reached current waypoint
+            if (distanceToWaypoint < 1.5) {
+                enemy.pathIndex++;
+                // If reached end of path, clear it to trigger recalculation
+                if (enemy.pathIndex >= enemy.path.length) {
+                    enemy.path = [];
+                    enemy.pathIndex = 0;
+                }
+            } else {
+                // Move towards waypoint
+                direction.normalize();
+                
+                // Apply force towards waypoint
+                const force = direction.scale(enemy.speed * 400);
+                enemy.aggregate.body.applyForce(force, new BABYLON.Vector3(0, 0, 0));
+                
+                // Make enemy face movement direction
+                enemy.mesh.lookAt(new BABYLON.Vector3(
+                    currentPosition.x + direction.x,
+                    enemy.mesh.position.y,
+                    currentPosition.z + direction.z
+                ));
+            }
+        } else {
+            // Fallback to direct movement if no path available
+            const direction = playerPosition.clone().subtract(currentPosition);
+            direction.y = 0; // Keep enemy on ground
+            
+            // Only move if there's a significant distance
+            if (direction.length() > 0.1) {
+                direction.normalize();
+                
+                // Apply reduced force for direct movement (fallback)
+                const force = direction.scale(enemy.speed * 300);
+                enemy.aggregate.body.applyForce(force, new BABYLON.Vector3(0, 0, 0));
+                
+                // Make enemy face player
+                enemy.mesh.lookAt(new BABYLON.Vector3(playerPosition.x, enemy.mesh.position.y, playerPosition.z));
+            }
         }
         
         // Check for attack range (collision handles actual damage)
@@ -178,15 +262,36 @@ window.game.startNextWave = function() {
       g.waveText.textContent = `Wave: ${g.currentWave}`;
     }
     
-    // Calculate enemies for this wave
-    const enemyCount = Math.min(5 + g.currentWave * 2, 40); // Cap at 40 enemies
+    // Calculate enemies for this wave - more aggressive scaling
+    const enemyCount = Math.min(3 + g.currentWave * 3, 50); // Start with 6, add 3 per wave, cap at 50
     g.enemiesRemaining = enemyCount;
     
-    // Spawn enemies
+    console.log(`Starting Wave ${g.currentWave} with ${enemyCount} enemies`);
+    
+    // Spawn enemies with staggered timing
     for (let i = 0; i < enemyCount; i++) {
         // Delay spawn to avoid all enemies appearing at once
-        setTimeout(() => window.game.spawnEnemy(), i * 200); 
+        setTimeout(() => {
+            if (g.gameActive) { // Only spawn if game is still active
+                window.game.spawnEnemy();
+            }
+        }, i * 150); // Slightly faster spawn rate
     }
+    
+    // Start automatic wave timer for next wave (regardless of completion)
+    g.waveStartTime = Date.now();
+    
+    // Clear any existing timer
+    if (g.waveTimer) {
+        clearTimeout(g.waveTimer);
+    }
+    
+    // Set timer for next wave
+    g.waveTimer = setTimeout(() => {
+        if (g.gameActive) {
+            window.game.startNextWave();
+        }
+    }, g.waveDelay);
 };
 
 window.game.damageEnemy = function(enemy, amount, hitPoint) {
@@ -246,6 +351,17 @@ window.game.killEnemy = function(enemy) {
         clearTimeout(enemy.healthBarTimeout);
     }
     
+    // Clear pathfinding data
+    if (enemy.path) {
+        enemy.path = [];
+    }
+    
+    // Clear debug visualization for this enemy
+    if (g.PathfindingManager && g.pathDebugMarkers && g.pathDebugMarkers[enemy.id]) {
+        g.pathDebugMarkers[enemy.id].forEach(marker => marker.dispose());
+        delete g.pathDebugMarkers[enemy.id];
+    }
+    
     // Remove from enemies array
     const index = g.enemies.indexOf(enemy);
     if (index !== -1) {
@@ -256,8 +372,17 @@ window.game.killEnemy = function(enemy) {
     g.enemiesRemaining--;
     console.log(`Enemies remaining: ${g.enemiesRemaining}`); // Debug log
     
-    // Check if wave is cleared
+    // Check if wave is cleared (optional - waves continue automatically)
     if (g.enemiesRemaining <= 0) {
-        window.game.waveCleared(); 
+        // Show wave cleared message but don't reset timer
+        if (g.waveStatusText) {
+            g.waveStatusText.textContent = `Wave ${g.currentWave} Cleared!`;
+            g.waveStatusText.style.display = 'block';
+        
+            // Hide after delay
+            setTimeout(() => {
+                if (g.waveStatusText) g.waveStatusText.style.display = 'none';
+            }, 2000);
+        }
     }
 };

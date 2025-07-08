@@ -378,6 +378,10 @@ const onKeyDown = function(event) {
             // Regenerate backrooms layout (cheat key)
             if (g.regenerateBackrooms) g.regenerateBackrooms();
             break;
+        case 'KeyP':
+            // Toggle pathfinding visualization (debug key)
+            if (g.togglePathfindingVisualization) g.togglePathfindingVisualization();
+            break;
         case 'Digit1':
             if (g.switchWeapon) g.switchWeapon(g.WEAPON_RIFLE);
             break;
@@ -517,6 +521,17 @@ window.game.startGame = function() {
     g.playerHealth = 100;
     g.characterState = "IN_AIR";
     
+    // Reset wave system
+    g.currentWave = 0;
+    g.enemiesRemaining = 0;
+    g.enemies = [];
+    
+    // Clear any existing wave timer
+    if (g.waveTimer) {
+        clearTimeout(g.waveTimer);
+        g.waveTimer = null;
+    }
+    
     // Start first wave
     if (g.startNextWave) g.startNextWave(); 
     
@@ -552,6 +567,12 @@ window.game.gameOver = function() {
     const g = window.game;
     g.gameActive = false;
     g.isPaused = false;
+    
+    // Clear wave timer on game over
+    if (g.waveTimer) {
+        clearTimeout(g.waveTimer);
+        g.waveTimer = null;
+    }
     
     // Show game over screen
     if (g.showGameOver) g.showGameOver();

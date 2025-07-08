@@ -64,7 +64,9 @@ window.game = {
   explosions: [],
   currentWave: 0,
   enemiesRemaining: 0,
-  waveDelay: 5000,
+  waveDelay: 30000, // 30 seconds between waves
+  waveTimer: null,
+  waveStartTime: 0,
   isWaveTransition: false,
 
   // Raycasting

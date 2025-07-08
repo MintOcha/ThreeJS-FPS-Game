@@ -290,25 +290,49 @@ window.game.shoot = function() {
                 const muzzlePosition = g.camera.position.clone().add(direction.scale(0.2));
                 g.createBulletTracer(muzzlePosition, direction);
 
-                // Raycast for hit detection using Babylon.js - start from camera position like original
+                // Raycast for hit detection - optimized based on weapon pierce capability
                 const ray = new BABYLON.Ray(g.camera.position, direction);
-                const hits = g.scene.multiPickWithRay(ray, (mesh) => {
+                ray.length = weapon.maxRange || 1000; // Limit ray distance for performance
+                
+                // Get pierce count to determine raycast strategy
+                const pierceCount = typeof weapon.pierce === 'number' ? weapon.pierce : 1;
+                
+                // Raycast filter function for performance
+                const raycastFilter = (mesh) => {
                     // Use collision manager to check if mesh should be excluded
                     if (g.CollisionManager.shouldExcludeFromRaycast(mesh)) {
                         return false;
                     }
                     
-                    // Exclude camera
-                    if (mesh === g.camera) {
-                        console.log(`Excluding camera from raycast`);
+                    // Exclude camera and UI elements
+                    if (mesh === g.camera || mesh.name.startsWith('UI_') || mesh.name.startsWith('HUD_')) {
                         return false;
                     }
-
-                    console.log(`Including in raycast: ${mesh.name}`); // Debug what gets included
-                    return true;
-                });
+                    
+                    // Only include enemies, walls, ground, and solid objects
+                    const isEnemy = mesh.name.startsWith('enemy_');
+                    const isSolid = mesh.name.startsWith('wall') || 
+                                   mesh.name.startsWith('backrooms') || 
+                                   mesh.name === 'ground' ||
+                                   mesh.name.startsWith('ceiling');
+                    
+                    return isEnemy || isSolid;
+                };
+                
+                let hits;
+                // Fast path for non-penetrating weapons (most common case)
+                if (pierceCount <= 1) {
+                    const hit = g.scene.pickWithRay(ray, raycastFilter);
+                    hits = hit ? [hit] : [];
+                } else {
+                    // Penetrating weapons need multi-hit detection
+                    hits = g.scene.multiPickWithRay(ray, raycastFilter);
+                }
 
                 if (hits && hits.length > 0) {
+                    // Sort hits by distance to process closest hits first
+                    hits.sort((a, b) => a.distance - b.distance);
+                    
                     let pierceCount = typeof weapon.pierce === 'number' ? weapon.pierce : 1;
                     let objectsHit = 0;
                     let hitResults = []; // Debug table of what was hit
@@ -318,8 +342,12 @@ window.game.shoot = function() {
                             break; // Stop after reaching pierce limit
                         }
 
-                        // Check if hit an enemy
-                        const enemy = g.enemies && g.enemies.find(e => e.mesh === hit.pickedMesh);
+                        // Check if hit an enemy (optimized check)
+                        let enemy = null;
+                        if (hit.pickedMesh.name.startsWith('enemy_')) {
+                            enemy = g.enemies && g.enemies.find(e => e.mesh === hit.pickedMesh);
+                        }
+                        
                         if (enemy) {
                             const distance = BABYLON.Vector3.Distance(g.camera.position, hit.pickedPoint);
                             let damage = weapon.damage;
@@ -349,10 +377,7 @@ window.game.shoot = function() {
                         }
                     }
 
-                    // Debug output
-                    if (hitResults.length > 0) {
-                        console.log(`Pierce hits (${objectsHit}/${pierceCount}):`, hitResults);
-                    }
+                    // Hit processing complete
                 }
             }
 

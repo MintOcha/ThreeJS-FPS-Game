@@ -253,13 +253,25 @@ window.game.createBackroomsWorld = function(maze) {
     // Clear existing world geometry (except ground)
     // We'll keep the ground as base
     
-    // Backrooms materials
+    // Backrooms materials with wallpaper texture
+    const wallTexture = new BABYLON.Texture("assets/wallpaper.png", g.scene);
+    // Scale texture based on wall dimensions (CELL_SIZE=4, WALL_HEIGHT=6)
+    // This creates appropriately sized wallpaper pattern
+    wallTexture.uScale = config.CELL_SIZE / 2; // Horizontal: repeat every 2 units for good density
+    wallTexture.vScale = config.WALL_HEIGHT / 3; // Vertical: repeat every 3 units for good proportion
+    wallTexture.wrapU = BABYLON.Texture.WRAP_ADDRESSMODE; // Enable wrapping for tiling
+    wallTexture.wrapV = BABYLON.Texture.WRAP_ADDRESSMODE;
+    
     const wallMaterial = new BABYLON.StandardMaterial("backroomsWall", g.scene);
-    wallMaterial.diffuseColor = new BABYLON.Color3(0.9, 0.9, 0.7); // Yellowish walls
+    wallMaterial.diffuseTexture = wallTexture;
+    wallMaterial.diffuseColor = new BABYLON.Color3(1.0, 1.0, 1.0); // White base for pure texture color
     wallMaterial.specularColor = new BABYLON.Color3(0.1, 0.1, 0.1);
     
+    // Pillar material also uses wallpaper texture but slightly darker
+    const pillarTexture = wallTexture.clone();
     const pillarMaterial = new BABYLON.StandardMaterial("backroomsPillar", g.scene);
-    pillarMaterial.diffuseColor = new BABYLON.Color3(0.8, 0.8, 0.6); // Slightly darker for pillars
+    pillarMaterial.diffuseTexture = pillarTexture;
+    pillarMaterial.diffuseColor = new BABYLON.Color3(0.9, 0.9, 0.9); // Slightly darker tint for pillars
     
     const ceilingMaterial = new BABYLON.StandardMaterial("backroomsCeiling", g.scene);
     ceilingMaterial.diffuseColor = new BABYLON.Color3(0.95, 0.95, 0.85); // Light ceiling
