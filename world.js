@@ -4,65 +4,75 @@
 window.game.setupLighting = function() {
     const g = window.game;
 
-    // Ambient light
+    // Ambient light (dimmer for backrooms atmosphere)
     const ambientLight = new BABYLON.HemisphericLight("ambientLight", new BABYLON.Vector3(0, 1, 0), g.scene);
-    ambientLight.intensity = 0.6;
+    ambientLight.intensity = 0.4; // Reduced for backrooms atmosphere
+    ambientLight.diffuse = new BABYLON.Color3(1.0, 0.9, 0.7); // Slightly warm white
 
-    // Directional light for shadows
-    const directionalLight = new BABYLON.DirectionalLight("dirLight", new BABYLON.Vector3(-1, -1, -1), g.scene);
-    directionalLight.position = new BABYLON.Vector3(50, 200, 100);
-    directionalLight.intensity = 0.8;
+    // Directional light for shadows (positioned higher for ceiling lighting effect)
+    const directionalLight = new BABYLON.DirectionalLight("dirLight", new BABYLON.Vector3(0, -1, 0), g.scene);
+    directionalLight.position = new BABYLON.Vector3(0, 50, 0); // Directly above for indoor feel
+    directionalLight.intensity = 0.6; // Reduced intensity
+    directionalLight.diffuse = new BABYLON.Color3(1.0, 0.95, 0.8); // Warm fluorescent-like light
     
     // Enable shadows
-    const shadowGenerator = new BABYLON.ShadowGenerator(1024, directionalLight);
+    const shadowGenerator = new BABYLON.ShadowGenerator(2048, directionalLight); // Higher resolution for indoor detail
     shadowGenerator.useBlurExponentialShadowMap = true;
-    shadowGenerator.blurKernel = 32;
+    shadowGenerator.blurKernel = 16; // Softer shadows
     g.shadowGenerator = shadowGenerator;
 
-    // Set sky color background
-    g.scene.clearColor = new BABYLON.Color3(0.53, 0.81, 0.92); // Sky blue
+    // Set background color (darker, more enclosed feeling)
+    g.scene.clearColor = new BABYLON.Color3(0.2, 0.2, 0.15); // Dark brownish for backrooms
+    
+    // Add some point lights for variation (fluorescent tube simulation)
+    for (let i = 0; i < 5; i++) {
+        const pointLight = new BABYLON.PointLight(`fluorescentLight${i}`, 
+            new BABYLON.Vector3(
+                (Math.random() - 0.5) * 100, 
+                3.8, 
+                (Math.random() - 0.5) * 100
+            ), g.scene);
+        pointLight.intensity = 0.3;
+        pointLight.diffuse = new BABYLON.Color3(1.0, 0.95, 0.85);
+        pointLight.range = 15;
+    }
 };
 
 window.game.createWorld = function() {
     const g = window.game;
     
-    // Floor
-    const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 100, height: 100}, g.scene);
+    // Create base ground (backrooms use this as foundation)
+    const config = g.BackroomsConfig;
+    const groundSize = Math.max(config.WORLD_WIDTH, config.WORLD_HEIGHT) * 1.2;
+    
+    const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: groundSize, height: groundSize}, g.scene);
     const groundMaterial = new BABYLON.StandardMaterial("groundMat", g.scene);
-    groundMaterial.diffuseColor = new BABYLON.Color3(0.6, 0.6, 0.6);
+    // Backrooms-style floor (yellowish carpet-like)
+    groundMaterial.diffuseColor = new BABYLON.Color3(0.8, 0.7, 0.5);
+    groundMaterial.specularColor = new BABYLON.Color3(0.1, 0.1, 0.1);
     ground.material = groundMaterial;
     ground.receiveShadows = true;
     
-    // Add physics to ground using modern PhysicsAggregate
+    // Add physics to ground
     const groundAggregate = new BABYLON.PhysicsAggregate(ground, BABYLON.PhysicsShapeType.BOX, 
         { mass: 0, restitution: 0.1, friction: 0.8 }, g.scene);
     
     // Add collision object to ground
     g.CollisionManager.createWorldCollision(ground, groundAggregate, { type: "ground", name: "ground" });
     
-    // Wall material
-    const wallMaterial = new BABYLON.StandardMaterial("wallMat", g.scene);
-    wallMaterial.diffuseColor = new BABYLON.Color3(0, 0.53, 1);
+    // Generate and create backrooms layout
+    console.log("Generating Backrooms world...");
+    const maze = g.generateBackrooms();
+    g.lastGeneratedMaze = maze; // Store for regeneration
+    g.createBackroomsWorld(maze);
     
-    // Outer walls
-    g.createWall(-50, 2.5, 0, 1, 5, 100, wallMaterial); // Left
-    g.createWall(50, 2.5, 0, 1, 5, 100, wallMaterial);  // Right
-    g.createWall(0, 2.5, -50, 100, 5, 1, wallMaterial); // Back
-    g.createWall(0, 2.5, 50, 100, 5, 1, wallMaterial);  // Front
-    
-    // Inner structures - Random boxes and platforms
-    for (let i = 0; i < 15; i++) {
-        const size = 2 + Math.random() * 5;
-        const height = 1 + Math.random() * 4;
-        const x = (Math.random() - 0.5) * 80;
-        const z = (Math.random() - 0.5) * 80;
-        g.createWall(x, height/2, z, size, height, size, wallMaterial);
+    // Set initial player spawn position to a safe location in the maze
+    const spawnPos = g.findSafeSpawnPosition(maze);
+    if (g.camera) {
+        g.camera.position.copyFrom(spawnPos);
     }
     
-    // Add some platforms
-    g.createWall(-20, 3, -20, 10, 0.5, 10, wallMaterial);
-    g.createWall(20, 5, 20, 15, 0.5, 15, wallMaterial);
-    g.createWall(0, 7, 0, 8, 0.5, 8, wallMaterial);
+    console.log("Backrooms world created successfully");
 };
 
 // Helper function to create walls

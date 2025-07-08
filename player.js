@@ -374,6 +374,10 @@ const onKeyDown = function(event) {
         case 'KeyR':
             if (g.reload) g.reload(); 
             break;
+        case 'KeyG':
+            // Regenerate backrooms layout (cheat key)
+            if (g.regenerateBackrooms) g.regenerateBackrooms();
+            break;
         case 'Digit1':
             if (g.switchWeapon) g.switchWeapon(g.WEAPON_RIFLE);
             break;

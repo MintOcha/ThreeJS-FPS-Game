@@ -35,15 +35,47 @@ window.game.spawnEnemy = function() {
     enemyMaterial.diffuseColor = new BABYLON.Color3(1, 0, 0);
     enemyMesh.material = enemyMaterial;
     
-    // Random spawn position away from player (minimum distance of 15)
+    // Find a safe spawn position in the backrooms maze
     let spawnPos = new BABYLON.Vector3();
-    do {
-        spawnPos.set(
-            (Math.random() - 0.5) * 80,
-            1,
-            (Math.random() - 0.5) * 80
-        );
-    } while (g.camera && BABYLON.Vector3.Distance(spawnPos, g.camera.position) < 15);
+    let attempts = 0;
+    const maxAttempts = 50;
+    
+    if (g.lastGeneratedMaze) {
+        // Try to spawn in open areas of the maze
+        const openCells = [];
+        for (let row = 0; row < g.lastGeneratedMaze.length; row++) {
+            for (let col = 0; col < g.lastGeneratedMaze[row].length; col++) {
+                if (g.lastGeneratedMaze[row][col].isPath) {
+                    openCells.push(g.lastGeneratedMaze[row][col]);
+                }
+            }
+        }
+        
+        if (openCells.length > 0) {
+            let validSpawn = false;
+            do {
+                const randomCell = openCells[Math.floor(Math.random() * openCells.length)];
+                spawnPos.set(randomCell.x, 1, randomCell.y);
+                
+                // Ensure minimum distance from player
+                const distanceFromPlayer = g.camera ? BABYLON.Vector3.Distance(spawnPos, g.camera.position) : 100;
+                validSpawn = distanceFromPlayer >= 15;
+                attempts++;
+            } while (!validSpawn && attempts < maxAttempts);
+        }
+    }
+    
+    // Fallback to random position if maze spawn failed
+    if (attempts >= maxAttempts) {
+        do {
+            spawnPos.set(
+                (Math.random() - 0.5) * 80,
+                1,
+                (Math.random() - 0.5) * 80
+            );
+            attempts++;
+        } while (g.camera && BABYLON.Vector3.Distance(spawnPos, g.camera.position) < 15 && attempts < maxAttempts * 2);
+    }
     
     enemyMesh.position.copyFrom(spawnPos);
     
