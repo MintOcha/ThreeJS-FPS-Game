@@ -32,8 +32,8 @@ window.game.BackroomsConfig = {
     MAX_CUSTOM_ROOM_RADIUS: 12, // Maximum radius of custom room
     
     // Wall and ceiling heights
-    WALL_HEIGHT: 5,
-    CEILING_HEIGHT: 4
+    WALL_HEIGHT: 6,
+    CEILING_HEIGHT: 5.5
 };
 
 // Calculate grid dimensions
@@ -248,6 +248,7 @@ window.game.generateBackrooms = function() {
 window.game.createBackroomsWorld = function(maze) {
     const g = window.game;
     const config = g.BackroomsConfig;
+    const { numCols, numRows } = getGridDimensions();
     
     // Clear existing world geometry (except ground)
     // We'll keep the ground as base
@@ -263,7 +264,10 @@ window.game.createBackroomsWorld = function(maze) {
     const ceilingMaterial = new BABYLON.StandardMaterial("backroomsCeiling", g.scene);
     ceilingMaterial.diffuseColor = new BABYLON.Color3(0.95, 0.95, 0.85); // Light ceiling
     
-    // Generate walls based on maze
+    // Create perimeter boundary walls around the entire map
+    g.createPerimeterWalls(numCols, numRows, config, wallMaterial);
+    
+    // Generate walls and ceiling based on maze
     for (let row = 0; row < maze.length; row++) {
         for (let col = 0; col < maze[row].length; col++) {
             const cell = maze[row][col];
@@ -293,28 +297,14 @@ window.game.createBackroomsWorld = function(maze) {
                         wallMaterial
                     );
                 }
-            } else {
-                // Create ceiling tile for open areas
-                const ceiling = BABYLON.MeshBuilder.CreateBox("ceiling", {
-                    width: config.CELL_SIZE, 
-                    height: 0.2, 
-                    depth: config.CELL_SIZE
-                }, g.scene);
-                ceiling.position = new BABYLON.Vector3(cell.x, config.CEILING_HEIGHT, cell.y);
-                ceiling.material = ceilingMaterial;
-                ceiling.receiveShadows = true;
-                
-                // Add physics to ceiling
-                const ceilingAggregate = new BABYLON.PhysicsAggregate(ceiling, BABYLON.PhysicsShapeType.BOX, 
-                    { mass: 0, restitution: 0.1, friction: 0.8 }, g.scene);
-                
-                // Add collision object
-                g.CollisionManager.createWorldCollision(ceiling, ceilingAggregate, { type: "ceiling", name: ceiling.name });
             }
         }
     }
     
-    console.log("3D Backrooms world created");
+    // Create complete ceiling coverage (separate from walls to ensure no holes)
+    g.createCompleteCeiling(numCols, numRows, config, ceilingMaterial);
+    
+    console.log("3D Backrooms world created with perimeter walls and complete ceiling");
 };
 
 // Enhanced wall creation function for backrooms
@@ -375,6 +365,7 @@ window.game.regenerateBackrooms = function() {
     for (const mesh of g.scene.meshes) {
         if (mesh.name.startsWith("backroomsWall") || 
             mesh.name.startsWith("ceiling") || 
+            mesh.name.startsWith("completeCeiling") ||
             mesh.name.startsWith("wall")) {
             meshesToRemove.push(mesh);
         }
@@ -418,4 +409,92 @@ window.game.regenerateBackrooms = function() {
     }
     
     console.log("Backrooms regenerated successfully!");
+};
+
+// Create perimeter boundary walls around the entire map
+window.game.createPerimeterWalls = function(numCols, numRows, config, wallMaterial) {
+    const g = window.game;
+    
+    // Calculate world boundaries
+    const halfWidth = config.WORLD_WIDTH / 2;
+    const halfHeight = config.WORLD_HEIGHT / 2;
+    const wallThickness = config.CELL_SIZE;
+    const wallHeight = config.WALL_HEIGHT;
+    
+    // North wall (top edge)
+    g.createBackroomsWall(
+        0, 
+        wallHeight / 2, 
+        -halfHeight - wallThickness / 2, 
+        config.WORLD_WIDTH + wallThickness * 2, 
+        wallHeight, 
+        wallThickness, 
+        wallMaterial
+    );
+    
+    // South wall (bottom edge)
+    g.createBackroomsWall(
+        0, 
+        wallHeight / 2, 
+        halfHeight + wallThickness / 2, 
+        config.WORLD_WIDTH + wallThickness * 2, 
+        wallHeight, 
+        wallThickness, 
+        wallMaterial
+    );
+    
+    // West wall (left edge)
+    g.createBackroomsWall(
+        -halfWidth - wallThickness / 2, 
+        wallHeight / 2, 
+        0, 
+        wallThickness, 
+        wallHeight, 
+        config.WORLD_HEIGHT, 
+        wallMaterial
+    );
+    
+    // East wall (right edge)
+    g.createBackroomsWall(
+        halfWidth + wallThickness / 2, 
+        wallHeight / 2, 
+        0, 
+        wallThickness, 
+        wallHeight, 
+        config.WORLD_HEIGHT, 
+        wallMaterial
+    );
+    
+    console.log("Perimeter boundary walls created");
+};
+
+// Create complete ceiling coverage to eliminate holes
+window.game.createCompleteCeiling = function(numCols, numRows, config, ceilingMaterial) {
+    const g = window.game;
+    
+    // Create one large ceiling piece that covers the entire world area
+    const ceilingWidth = config.WORLD_WIDTH;
+    const ceilingDepth = config.WORLD_HEIGHT;
+    
+    const completeCeiling = BABYLON.MeshBuilder.CreateBox("completeCeiling", {
+        width: ceilingWidth, 
+        height: 0.2, 
+        depth: ceilingDepth
+    }, g.scene);
+    
+    completeCeiling.position = new BABYLON.Vector3(0, config.CEILING_HEIGHT, 0);
+    completeCeiling.material = ceilingMaterial;
+    completeCeiling.receiveShadows = true;
+    
+    // Add physics to complete ceiling
+    const ceilingAggregate = new BABYLON.PhysicsAggregate(completeCeiling, BABYLON.PhysicsShapeType.BOX, 
+        { mass: 0, restitution: 0.1, friction: 0.8 }, g.scene);
+    
+    // Add collision object
+    g.CollisionManager.createWorldCollision(completeCeiling, ceilingAggregate, { 
+        type: "ceiling", 
+        name: "completeCeiling" 
+    });
+    
+    console.log("Complete ceiling coverage created");
 };
