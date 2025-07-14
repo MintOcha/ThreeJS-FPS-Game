@@ -381,6 +381,9 @@ function animate() {
     if (g.damageFlashTime > 0) {
       g.damageFlashTime -= g.deltaTime;
     }
+
+    // Update light flicker effects
+    if (g.updateLightFlicker) g.updateLightFlicker();
   }
 
   // Render the scene
